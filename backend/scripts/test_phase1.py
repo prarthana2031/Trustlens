@@ -23,8 +23,8 @@ def main():
     try:
         from app.core.config import settings
         print(f"   ✅ APP_NAME: {settings.APP_NAME}")
-        print(f"   ✅ SUPABASE_URL: {settings.SUPABASE_URL[:30]}...")
-        print(f"   ✅ DATABASE_URL: {settings.DATABASE_URL[:30]}...")
+        print(f"   ✅ SUPABASE_URL: {settings.SUPABASE_URL[:30]}..." if settings.SUPABASE_URL else "   ⚠️ SUPABASE_URL not set")
+        print(f"   ✅ DATABASE_URL: {settings.DATABASE_URL[:30]}..." if settings.DATABASE_URL else "   ⚠️ DATABASE_URL not set")
     except Exception as e:
         print(f"   ❌ Config failed: {e}")
         return
