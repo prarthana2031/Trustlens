@@ -12,7 +12,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 @app.get("/")
 def root():
     return {"message": "Working!",
-            "supabase_loaded":SUPABASE URL is not None}
+            "supabase_loaded":SUPABASE_URL is not None}
 
 
 
