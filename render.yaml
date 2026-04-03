@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: backend-api
+    runtime: python
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port 8000
+
+  - type: web
+    name: ml-service
+    runtime: python
+    buildCommand: cd ml && pip install -r requirements.txt
+    startCommand: cd ml && uvicorn ml_api:app --host 0.0.0.0 --port 8001
+
+  - type: web
+    name: frontend
+    runtime: image
+    buildCommand: cd frontend && docker build -t frontend .
+    startCommand: docker run -p 80:80 frontend
