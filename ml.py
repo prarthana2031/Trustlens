@@ -1,13 +1,21 @@
 import streamlit as st
+import requests
+import os
 
-st.title("ML Service Running on Render 🚀")
+st.title("Your App Prototype")
 
-st.write("This is a basic ML app placeholder.")
+# Use Render environment variable
+API_URL = os.getenv("API_URL")
 
-# Simple input
-number = st.number_input("Enter a number:")
-
-# Simple output
-if st.button("Process"):
-    result = number * 2
-    st.success(f"Result: {result}")
+if not API_URL:
+    st.error("API_URL not set")
+else:
+    if st.button("Fetch Data"):
+        try:
+            response = requests.get(f"{API_URL}/data")
+            if response.status_code == 200:
+                st.json(response.json())
+            else:
+                st.error("Error fetching data")
+        except Exception as e:
+            st.error(f"Request failed: {e}")

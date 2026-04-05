@@ -3,16 +3,16 @@ services:
     name: backend-api
     runtime: python
     buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port 8000
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port 10000
 
   - type: web
     name: ml-service
     runtime: python
-    buildCommand: cd ml && pip install -r requirements.txt
-    startCommand: cd ml && uvicorn ml_api:app --host 0.0.0.0 --port 8001
+    buildCommand: cd ml && pip install -r mlrequirements.txt
+    startCommand: cd ml && streamlit run ml.py --server.port 10000 --server.address 0.0.0.0
 
   - type: web
     name: frontend
-    runtime: image
-    buildCommand: cd frontend && docker build -t frontend .
-    startCommand: docker run -p 80:80 frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
