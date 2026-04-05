@@ -7,7 +7,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://your-backend-url.onrender.com',
+        target: 'https://dashboard.render.com/web/srv-d77tn2c50q8c73d2f760',
         changeOrigin: true
       }
     }
