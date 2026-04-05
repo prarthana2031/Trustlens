@@ -1,67 +1,23 @@
 import logging
 import sys
-import json
-from datetime import datetime
-from typing import Dict, Any
-
 from app.core.config import settings
 
-class JSONFormatter(logging.Formatter):
-    """Custom JSON formatter for structured logging"""
+def setup_logging():
+    """Setup logging configuration"""
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
-    def format(self, record: logging.LogRecord) -> str:
-        log_data: Dict[str, Any] = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "level": record.levelname,
-            "name": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-        }
-        
-        # Add exception info if present
-        if record.exc_info:
-            log_data["exception"] = self.formatException(record.exc_info)
-        
-        # Add extra fields
-        if hasattr(record, "extra"):
-            log_data.update(record.extra)
-        
-        return json.dumps(log_data)
-
-def setup_logging() -> None:
-    """Configure logging for the application"""
+    logging.basicConfig(
+        level=getattr(logging, settings.LOG_LEVEL),
+        format=log_format,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("app.log")
+        ]
+    )
     
-    # Set log level
-    log_level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    # Set third-party loggers to WARNING
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    
-    # Remove existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    
-    # Create console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    
-    # Set formatter
-    if settings.LOG_FORMAT == "json":
-        formatter = JSONFormatter()
-    else:
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
-        )
-    
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-    
-    # Suppress noisy loggers in production
-    if settings.ENVIRONMENT == "production":
-        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-        logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    
-    logging.info(f"Logging configured with level: {settings.LOG_LEVEL}")
+    return logging.getLogger(__name__)

@@ -1,25 +1,29 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+from typing import Generator
 from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Create database engine
+# Create database engine with connection pooling
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,  # Verify connections before using
-    echo=settings.DEBUG,  # Log SQL in debug mode
+    pool_recycle=3600,   # Recycle connections after 1 hour
+    pool_size=10,        # Number of connections to keep in pool
+    max_overflow=20,     # Maximum overflow connections
+    echo=settings.DEBUG   # Log SQL queries in debug mode
 )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create base class for models
+# Base class for models
 Base = declarative_base()
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """Dependency to get database session"""
     db = SessionLocal()
     try:
@@ -27,15 +31,33 @@ def get_db():
     finally:
         db.close()
 
-def test_connection():
+def test_database_connection() -> bool:
     """Test database connection"""
     try:
-        with engine.connect() as conn:
-            # Use text() for raw SQL in SQLAlchemy 2.0
-            result = conn.execute(text("SELECT 1"))
-            result.fetchone()
-            logger.info("✅ Database connection successful")
-            return True
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        logger.info("Database connection successful")
+        return True
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
+        logger.error(f"Database connection failed: {str(e)}")
         return False
+
+def init_database():
+    """Initialize database (create tables if not exist)"""
+    from app.models import candidate, score, bias_metric, feedback
+    
+    try:
+        # Check if tables exist
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        if not existing_tables:
+            logger.info("Creating database tables...")
+            Base.metadata.create_all(bind=engine)
+            logger.info("Database tables created successfully")
+        else:
+            logger.info(f"Tables already exist: {existing_tables}")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {str(e)}")
+        raise

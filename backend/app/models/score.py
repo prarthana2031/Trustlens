@@ -1,20 +1,18 @@
-from sqlalchemy import Column, String, Float, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Float, JSON, ForeignKey, Integer
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 from app.models.base import BaseModel
 
 class Score(BaseModel):
     __tablename__ = "scores"
     
     candidate_id = Column(String(36), ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False)
-    overall_score = Column(Float, nullable=True)
-    skill_score = Column(Float, nullable=True)
-    experience_score = Column(Float, nullable=True)
-    education_score = Column(Float, nullable=True)
-    breakdown_json = Column(JSON, nullable=True)
-    explanation_json = Column(JSON, nullable=True)
-    scored_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    overall_score = Column(Float, nullable=False)
+    skill_score = Column(Float, nullable=False)
+    experience_score = Column(Float, nullable=False)
+    education_score = Column(Float, nullable=False)
+    breakdown = Column(JSON, nullable=False)  # Detailed breakdown of each category
+    ranking_percentile = Column(Float, nullable=True)
+    version = Column(Integer, default=1, nullable=False)  # For tracking re-scores
     
     # Relationships
     candidate = relationship("Candidate", back_populates="scores")
-    feedback = relationship("Feedback", back_populates="score", uselist=False)

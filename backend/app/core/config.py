@@ -1,21 +1,20 @@
+from typing import List
+from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-class Settings:
-    """Application settings loaded from environment variables"""
+class Settings(BaseSettings):
+    # Project
+    PROJECT_NAME: str = "Resume Screening Backend"
+    VERSION: str = "1.0.0"
+    API_V1_PREFIX: str = "/api/v1"
     
-    # Application
-    APP_NAME: str = os.getenv("APP_NAME", "Resume Scoring API")
+    # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
-    API_V1_PREFIX: str = os.getenv("API_V1_PREFIX", "/api/v1")
-    
-    # Server
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    DEBUG: bool = ENVIRONMENT == "development"
     
     # Supabase
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
@@ -25,16 +24,37 @@ class Settings:
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     
-    # CORS
-    ALLOWED_ORIGINS: list = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    # Storage
+    STORAGE_BUCKET_NAME: str = os.getenv("STORAGE_BUCKET_NAME", "resumes")
+    STORAGE_URL_EXPIRY: int = int(os.getenv("STORAGE_URL_EXPIRY", "3600"))
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_FILE_TYPES: List[str] = [".pdf", ".doc", ".docx"]
     
-    def validate(self):
-        """Validate required settings"""
-        required = ["SUPABASE_URL", "SUPABASE_KEY", "DATABASE_URL"]
-        missing = [r for r in required if not getattr(self, r)]
-        if missing:
-            raise ValueError(f"Missing required environment variables: {missing}")
+    # ML Services
+    ML_PARSING_SERVICE_URL: str = os.getenv("ML_PARSING_SERVICE_URL", "http://localhost:8001")
+    ML_SCORING_SERVICE_URL: str = os.getenv("ML_SCORING_SERVICE_URL", "http://localhost:8002")
+    ML_BIAS_SERVICE_URL: str = os.getenv("ML_BIAS_SERVICE_URL", "http://localhost:8003")
+    ML_FEEDBACK_SERVICE_URL: str = os.getenv("ML_FEEDBACK_SERVICE_URL", "http://localhost:8004")
+    
+    # API Configuration
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+    ]
+    ALLOWED_HOSTS: List[str] = ["*"]
+    
+    # Rate Limiting
+    RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+    RATE_LIMIT_PERIOD: int = int(os.getenv("RATE_LIMIT_PERIOD", "60"))
+    
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="allow"
+    )
 
-# Create global settings instance
 settings = Settings()
-settings.validate()
