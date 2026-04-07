@@ -1,27 +1,12 @@
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent))
-
-import os
-from fastapi import FastAPI
-
-app = FastAPI()
-
-print("DATABASE_URL:", os.getenv("DATABASE_URL"))
-
-@app.get("/")
-def home():
-    return {"message": "API working"}
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import text
-from core.config import settings
-from core.logging import setup_logging
-from api.v1.router import api_router
-from middlewares.error_handler import add_exception_handlers
-from middlewares.request_logger import RequestLoggerMiddleware
+from app.core.config import settings
+from app.core.logging import setup_logging
+from app.api.v1.router import api_router
+from app.middlewares.error_handler import add_exception_handlers
+from app.middlewares.request_logger import RequestLoggerMiddleware
 
 # Setup logging
 setup_logging()
@@ -72,11 +57,11 @@ async def health_check():
 @app.get("/ready")
 async def readiness_check():
     # Check database connection
-    from app.core.database import SessionLocal
     try:
+        from app.core.database import SessionLocal
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         db.close()
         return {"status": "ready", "database": "connected"}
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database not ready: {str(e)}")
+        return {"status": "not ready"}
