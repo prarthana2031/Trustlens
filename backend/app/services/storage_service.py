@@ -4,15 +4,43 @@ from typing import Optional
 from datetime import datetime
 import uuid
 import logging
+import os
+import json
+import time
 
 logger = logging.getLogger(__name__)
 
 class StorageService:
     def __init__(self):
+        # Fail fast with a clear message if env isn't loaded.
+        if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
+            raise RuntimeError(
+                "Supabase config missing. Ensure backend/.env contains SUPABASE_URL and SUPABASE_SERVICE_KEY, then restart the server."
+            )
+
+        # Normalize values to avoid hidden CRLF/quotes breaking JWT parsing.
+        raw_url = settings.SUPABASE_URL
+        raw_key = settings.SUPABASE_SERVICE_KEY
+        url = (raw_url or "").strip().strip('"').strip("'")
+        key = (raw_key or "").strip().strip('"').strip("'")
+
+        # Safe diagnostics (no secrets)
+        raw_key_len = len(raw_key or "")
+        key_len = len(key)
+        key_tail = (key or "")[-6:]
+        logger.warning(
+            "StorageService init: bucket=%s supabase_url=%s service_key_len=%s(raw=%s) service_key_tail=%s",
+            settings.STORAGE_BUCKET_NAME,
+            url,
+            key_len,
+            raw_key_len,
+            key_tail,
+        )
+
         # Use SERVICE_KEY for storage operations to bypass RLS policies
         self.client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_KEY
+            url,
+            key,
         )
         self.bucket_name = settings.STORAGE_BUCKET_NAME
         
@@ -37,6 +65,13 @@ class StorageService:
     def upload_file(self, file_content: bytes, original_filename: str, content_type: str) -> dict:
         """Upload file to Supabase storage"""
         try:
+            logger.warning(
+                "Storage upload start: bucket=%s filename=%s bytes=%s content_type=%s",
+                self.bucket_name,
+                original_filename,
+                len(file_content) if file_content else 0,
+                content_type,
+            )
             # Generate unique filename
             file_extension = original_filename.split('.')[-1]
             unique_filename = f"{uuid.uuid4()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
