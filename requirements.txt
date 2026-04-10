@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-transformers
-torch
-scipy
-PyPDF2
-python-docx
-pydantic
-python-multipart
