@@ -7,7 +7,7 @@ from app.services.storage_service import storage_service
 from app.services.ml_client import ml_client
 from app.orchestrators.upload_orchestrator import UploadOrchestrator
 from app.utils.file_validator import FileValidator
-from app.models.candidate import Candidate
+from app.models.candidate import Candidate, CandidateStatus
 import logging
 
 router = APIRouter()
@@ -44,11 +44,11 @@ async def upload_resume(
         candidate = Candidate(
             name=candidate_name,
             email=candidate_email,
-            file_name=storage_result["original_name"],
+            file_name=storage_result["file_path"],
             file_url=storage_result["file_url"],
             file_size=storage_result["file_size"],
             file_type=storage_result["file_type"],
-            status="pending"
+            status=CandidateStatus.PENDING,
         )
         
         db.add(candidate)
@@ -114,11 +114,11 @@ async def batch_upload(
             
             # Create candidate record
             candidate = Candidate(
-                file_name=storage_result["original_name"],
+                file_name=storage_result["file_path"],
                 file_url=storage_result["file_url"],
                 file_size=storage_result["file_size"],
                 file_type=storage_result["file_type"],
-                status="pending"
+                status=CandidateStatus.PENDING,
             )
             
             db.add(candidate)

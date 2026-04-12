@@ -23,8 +23,14 @@ class MLClient:
             path = parsed.path or ""
             bucket = settings.STORAGE_BUCKET_NAME
             public_marker = f"/storage/v1/object/public/{bucket}/"
+            sign_marker = f"/storage/v1/object/sign/{bucket}/"
+            object_key = None
             if public_marker in path:
                 object_key = path.split(public_marker, 1)[1].lstrip("/")
+            elif sign_marker in path:
+                object_key = path.split(sign_marker, 1)[1].lstrip("/")
+
+            if object_key:
                 candidate_keys = [object_key]
                 if object_key.startswith(f"{bucket}/"):
                     candidate_keys.append(object_key[len(bucket) + 1 :])

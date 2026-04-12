@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional, Any, Dict, List
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -145,15 +146,65 @@ async def analyze_bias(request: BiasAnalysisRequest, db: Session = Depends(get_d
     return {"success": True, "data": result}
 
 
+def _bias_metrics_group_breakdown(db: Session, dimension_label: str) -> Dict[str, Any]:
+    """Verification-style payload for ?group=gender etc."""
+    latest_at = db.query(func.max(BiasMetric.calculated_at)).scalar()
+    if not latest_at:
+        return {"group_type": dimension_label, "groups": {}, "disparity_ratio": None}
+
+    rows = (
+        db.query(BiasMetric)
+        .filter(
+            BiasMetric.calculated_at == latest_at,
+            BiasMetric.metric_name == "average_score",
+            BiasMetric.group_type == "group",
+        )
+        .all()
+    )
+    groups: Dict[str, Any] = {}
+    for r in rows:
+        n = 0
+        if isinstance(r.details, dict) and r.details.get("n") is not None:
+            try:
+                n = int(r.details["n"])
+            except (TypeError, ValueError):
+                n = 0
+        groups[r.group_name] = {"count": n, "avg_score": float(r.metric_value)}
+
+    dpr_row = (
+        db.query(BiasMetric)
+        .filter(
+            BiasMetric.calculated_at == latest_at,
+            BiasMetric.metric_name == "demographic_parity_ratio",
+            BiasMetric.group_type == "overall",
+        )
+        .first()
+    )
+    disparity = float(dpr_row.metric_value) if dpr_row else None
+
+    return {
+        "group_type": dimension_label,
+        "groups": groups,
+        "disparity_ratio": disparity,
+    }
+
+
 @router.get("/metrics")
 async def get_bias_metrics(
     group_type: Optional[str] = Query(None, description="Filter by group type (gender, ethnicity, etc.)"),
+    group: Optional[str] = Query(None, description="Alias of group_type for backward compatibility"),
     db: Session = Depends(get_db)
 ):
-    """Get latest bias metrics in a compact overall format."""
+    """Get latest bias metrics: overall snapshot, or grouped breakdown for ?group=gender."""
+    raw = (group_type or group or "").strip()
+    raw_lower = raw.lower()
+
+    if raw_lower and raw_lower != "overall":
+        return _bias_metrics_group_breakdown(db, dimension_label=raw_lower)
+
     base_query = db.query(BiasMetric)
-    if group_type:
-        base_query = base_query.filter(BiasMetric.group_type == group_type)
+    if raw_lower == "overall":
+        base_query = base_query.filter(BiasMetric.group_type == "overall")
 
     latest = base_query.order_by(BiasMetric.calculated_at.desc()).first()
     if not latest or not latest.calculated_at:
