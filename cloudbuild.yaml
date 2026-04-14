@@ -1,6 +1,7 @@
 steps:
   # 1. Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    dir: 'backend'
     args:
       - 'build'
       - '-t'
