@@ -1,4 +1,5 @@
 steps:
+  # 1. Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -6,13 +7,15 @@ steps:
       - 'us-central1-docker.pkg.dev/trustlens-493209/backend-repo/backend-image:$SHORT_SHA'
       - '-f'
       - 'backend/Dockerfile'
-      - 'backend'
+      - '.'
 
+  # 2. Push the image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/trustlens-493209/backend-repo/backend-image:$SHORT_SHA'
 
+  # 3. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
     args:
@@ -26,8 +29,6 @@ steps:
       - '--port=8080'
       - '--memory=512Mi'
       - '--set-env-vars=HF_API_KEY=${_HF_API_KEY},DATABASE_URL=${_DATABASE_URL}'
-      # OR (better)
-      # --set-secrets=HF_API_KEY=HF_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest
 
 images:
   - 'us-central1-docker.pkg.dev/trustlens-493209/backend-repo/backend-image:$SHORT_SHA'
