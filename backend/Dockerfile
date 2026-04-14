@@ -1,28 +1,30 @@
-# Use official Python slim image
+# Use official Python image
 FROM python:3.11-slim
 
 # Set working directory inside container
 WORKDIR /app
 
-# Install system dependencies required for psycopg2-binary, cryptography, etc.
-# These are needed because your requirements include psycopg2-binary and other binary packages
+# Install system dependencies (required for psycopg2-binary, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for Docker layer caching)
+# Upgrade pip first
+RUN pip install --no-cache-dir --upgrade pip
+
+# Copy requirements from ROOT (build context is branch root)
 COPY requirements.txt .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire backend code (app/, migrations/, scripts/, etc.)
-COPY . .
+# Copy all backend code (inside 'backend/' folder of the context)
+COPY backend/ .
 
-# Expose the port Cloud Run expects
+# Cloud Run uses this port
 ENV PORT=8080
 
-# Run the FastAPI app
-# main.py is inside the "app" folder, so module path is "app.main"
-CMD [CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT]
+# Run FastAPI app with workers and proxy headers
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2 --proxy-headers"]
