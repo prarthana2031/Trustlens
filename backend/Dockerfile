@@ -18,11 +18,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire backend code (app/, migrations/, scripts/, etc.)
-COPY . .
+COPY backend/ .
 
 # Expose the port Cloud Run expects
 ENV PORT=8080
 
 # Run the FastAPI app
 # main.py is inside the "app" folder, so module path is "app.main"
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2 --proxy-headers"]
