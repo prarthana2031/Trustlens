@@ -29,7 +29,7 @@ steps:
       - '--port=8080'
       - '--memory=512Mi'
       - '--set-env-vars=HF_API_KEY=${_HF_API_KEY},DATABASE_URL=${_DATABASE_URL}'
-      - '--set-secrets=FIREBASE_KEY=firebase-key:latest'
+      - '--set-secrets=FIREBASE_KEY=firebase-service-account:latest'
 
 images:
   - 'us-central1-docker.pkg.dev/trustlens-493209/backend-repo/backend-image:$SHORT_SHA'
