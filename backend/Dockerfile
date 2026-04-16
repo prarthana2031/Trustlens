@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set working directory inside container
-WORKDIR /
+WORKDIR /app_root
 
 # Install system dependencies (required for psycopg2-binary, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
