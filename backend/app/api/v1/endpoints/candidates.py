@@ -366,6 +366,69 @@ async def get_candidate_feedback_alias(
     }
 
 
+@router.get("/{candidate_id}/report")
+async def get_candidate_report(
+    candidate_id: str,
+    db: Session = Depends(get_db),
+):
+    """Get detailed candidate report from ML service.
+    
+    This endpoint retrieves the stored parsed_data and required_skills,
+    then calls the ML service's POST /candidate-report endpoint to generate
+    a comprehensive report with scores, matched/missing skills, and recommendations.
+    
+    Returns:
+        - overall_score: Overall matching score (0-100)
+        - matched_skills: List of skills matched from resume
+        - missing_skills: List of required skills not found
+        - recommendations: List of recommendations for the candidate
+        - explanation: Detailed explanation of the report
+        - skill_match_percentage: Percentage of required skills matched
+        - experience_level: Assessed experience level
+        - next_steps: Recommended next steps
+    """
+    from app.services.ml_client import ml_client
+    
+    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    
+    # Check if we have parsed data
+    if not candidate.parsed_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Candidate data not yet processed. Please wait for processing to complete."
+        )
+    
+    # Get required skills (default to empty list if not provided)
+    required_skills = candidate.required_skills or []
+    job_role = candidate.job_role or "Not specified"
+    
+    try:
+        # Call ML service to generate comprehensive report
+        report = await ml_client.candidate_report(
+            parsed_data=candidate.parsed_data,
+            required_skills=required_skills,
+            job_role=job_role
+        )
+        
+        return {
+            "candidate_id": candidate_id,
+            "application_id": candidate.application_id,
+            "name": candidate.name,
+            "email": candidate.email,
+            "job_role": job_role,
+            "report": report,
+            "generated_at": _iso_z(datetime.now(timezone.utc))
+        }
+    except Exception as e:
+        logger.error(f"Failed to generate candidate report: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate report: {str(e)}"
+        )
+
+
 @router.get("/{candidate_id}")
 async def get_candidate(
     candidate_id: str,
