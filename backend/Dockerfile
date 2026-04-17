@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Set working directory inside container
-WORKDIR /app
+WORKDIR /app_root
 
 # Install system dependencies (required for psycopg2-binary, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,15 +22,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy all backend code (inside 'backend/' folder of the context)
+# ... (after your pip installs)
 COPY backend/ .
 
+<<<<<<< HEAD
 # Cloud Run uses PORT=8080 by default
 ENV PORT=8080
+=======
+# This ensures all your internal imports work
+ENV PYTHONPATH=. 
+>>>>>>> a049d96a5ac6484910a136cc962ef4ffe77b1cf2
 
-# Health check for Cloud Run
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
-
-# Run FastAPI app
-# Use uvicorn to listen on 0.0.0.0 and the PORT env variable
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --timeout-keep-alive 65
+# Cloud Run injects $PORT (usually 8080), so we use that variable
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers
