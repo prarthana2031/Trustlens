@@ -6,13 +6,14 @@ def setup_logging():
     """Setup logging configuration"""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
+    # Only use StreamHandler for Cloud Run compatibility
+    # File logging is not reliable in containerized environments
+    handlers = [logging.StreamHandler(sys.stdout)]
+    
     logging.basicConfig(
         level=getattr(logging, settings.LOG_LEVEL),
         format=log_format,
-        handlers=[
-            logging.StreamHandler(sys.stdout),
-            logging.FileHandler("app.log")
-        ]
+        handlers=handlers
     )
     
     # Set third-party loggers to WARNING

@@ -28,5 +28,8 @@ COPY backend/ .
 # This ensures all your internal imports work
 ENV PYTHONPATH=.
 
+# Ensure stdout/stderr are unbuffered for Cloud Run logging
+ENV PYTHONUNBUFFERED=1
+
 # Cloud Run injects $PORT (usually 8080), so we use that variable
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --proxy-headers --timeout-keep-alive 65

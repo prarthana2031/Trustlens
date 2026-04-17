@@ -75,9 +75,12 @@ app.add_middleware(RequestLoggerMiddleware)
 add_exception_handlers(app)
 
 # Static files for ReDoc
-_STATIC_DIR = Path(__file__).resolve().parent / "static"
-_STATIC_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+try:
+    _STATIC_DIR = Path(__file__).resolve().parent / "static"
+    _STATIC_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+except Exception as e:
+    print(f"⚠️ Warning: Could not mount static files: {e}")
 
 # Include API router (only once, prefix /api/v1)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
@@ -96,19 +99,10 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Cloud Run"""
-    from app.core.database import engine
-    
-    db_status = "connected" if engine else "disconnected"
-    firebase_status = "initialized" if firebase_admin._apps else "not_initialized"
-    now = datetime.now(timezone.utc)
-    
+    """Health check endpoint for Cloud Run - lightweight and fast"""
     return {
         "status": "healthy",
-        "database": db_status,
-        "firebase": firebase_status,
-        "version": settings.VERSION,
-        "timestamp": now.isoformat()
+        "version": settings.VERSION
     }
 
 @app.get("/ready")
