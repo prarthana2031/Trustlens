@@ -11,13 +11,27 @@ logger = logging.getLogger(__name__)
 
 class MLClient:
     def __init__(self):
-        self.timeout = 90.0
+        # Cloud Run requests can timeout at 540s, so keep per-request timeout lower
+        # Use different timeouts for different operations
+        self.parse_timeout = 120.0  # 2 minutes for parsing
+        self.score_timeout = 180.0  # 3 minutes for scoring
+        self.feedback_timeout = 60.0  # 1 minute for feedback
+        
         # Use AsyncClient for async methods (prevents blocking)
-        self.client = httpx.AsyncClient(timeout=self.timeout)
+        self.client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def parse_resume(self, file_url: str) -> Dict[str, Any]:
-        """Call ML parsing service (multipart/form-data with `file`)."""
+        """Call ML parsing service (multipart/form-data with `file`).
+        
+        Returns:
+            Dict with parsed resume data. Must contain:
+            - parsed_data: dict with resume structure
+            - file_name: str
+        
+        Raises:
+            Exception: If parsing fails after retries
+        """
         try:
             # Download bytes using a fresh signed URL if this is a Supabase public URL.
             signed_url = file_url
@@ -54,9 +68,17 @@ class MLClient:
             response = await self.client.post(
                 f"{settings.ML_PARSING_SERVICE_URL}/parse",
                 files={"file": (filename, file_bytes, content_type)},
+                timeout=self.parse_timeout,
             )
             response.raise_for_status()
             result = response.json()
+            
+            # Validate response has required fields
+            if not isinstance(result, dict):
+                raise ValueError(f"ML parse service returned non-dict: {type(result)}")
+            if "parsed_data" not in result:
+                logger.warning(f"⚠️ ML parse response missing 'parsed_data'. Keys: {list(result.keys())}")
+            
             logger.info(f"✅ ML parse service returned keys: {list(result.keys())}, file_name={result.get('file_name')}")
             return result
         except Exception as e:
@@ -66,6 +88,9 @@ class MLClient:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def score_resume(self, parsed_data: Dict[str, Any], mode: str = "baseline", required_skills: list = None) -> Dict[str, Any]:
         """Call ML scoring service with resume text.
+        
+        Validates response contains required fields.
+        Returns: Dict with overall_score and components (skills, experience, education).
         
         Args:
             parsed_data: Resume data from ML parser

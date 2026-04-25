@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.docs import get_redoc_html
@@ -15,6 +16,7 @@ import firebase_admin
 from firebase_admin import credentials
 import os
 import json
+import logging
 
 if not firebase_admin._apps:
     firebase_key_json = os.environ.get("FIREBASE_KEY")
@@ -50,6 +52,7 @@ if not firebase_admin._apps:
 
 # Setup logging
 setup_logging()
+logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -81,6 +84,10 @@ app.add_middleware(
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 app.add_middleware(RequestLoggerMiddleware)
 
+# Add rate limiter (100 requests per minute per IP)
+from app.middlewares.rate_limiter import RateLimiterMiddleware
+app.add_middleware(RateLimiterMiddleware, requests_per_minute=100)
+
 # Exception handlers
 add_exception_handlers(app)
 
@@ -95,9 +102,17 @@ except Exception as e:
 # Include API router (only once, prefix /api/v1)
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Optional: keep a simple /api alias for convenience (but may cause duplication)
-# Better to remove the second include. If you really need both, use redirect.
-# For now, I recommend removing: app.include_router(api_router, prefix="/api")
+# Graceful shutdown handler
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Handle graceful shutdown"""
+    logger.info("⏹️ Shutting down server...")
+    # Cancel any pending background tasks
+    import asyncio
+    for task in asyncio.all_tasks():
+        if not task.done():
+            task.cancel()
+    logger.info("✅ Shutdown complete")
 
 @app.get("/")
 async def root():
@@ -117,14 +132,29 @@ async def health_check():
 
 @app.get("/ready")
 async def readiness_check():
+    """Readiness check for Cloud Run - passes if basic services are ready"""
     try:
-        from app.core.database import SessionLocal
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        return {"status": "ready", "database": "connected"}
+        # Check database if configured
+        if settings.DATABASE_URL:
+            from app.core.database import SessionLocal, engine
+            if engine is None:
+                return JSONResponse(
+                    status_code=503,
+                    content={"status": "not ready", "reason": "database engine failed to initialize"}
+                )
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            db.close()
+            return {"status": "ready", "database": "connected"}
+        else:
+            # Database optional - still ready if other services are configured
+            return {"status": "ready", "database": "not configured (optional)"}
     except Exception as e:
-        return {"status": "not ready"}
+        logger.warning(f"Readiness check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not ready", "reason": str(e)}
+        )
 
 @app.get("/redoc", include_in_schema=False)
 async def custom_redoc_html():

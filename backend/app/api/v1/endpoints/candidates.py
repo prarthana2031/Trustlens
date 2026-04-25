@@ -170,7 +170,7 @@ def build_candidate_paths(file_reference: str) -> list[str]:
     return final
 
 
-@router.post("/")
+@router.post("")
 async def create_candidate(
     candidate_request: CandidateCreateRequest,
     db: Session = Depends(get_db)
@@ -227,7 +227,7 @@ async def create_candidate(
         logger.error(f"Candidate creation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Candidate creation failed: {str(e)}")
 
-@router.get("/")
+@router.get("")
 async def list_candidates(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),

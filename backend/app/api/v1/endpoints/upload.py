@@ -77,15 +77,32 @@ async def upload_resume(
         db.commit()
         db.refresh(candidate)
         
-        # Process in background.
-        # NOTE: UploadOrchestrator.process_resume is async, and Starlette BackgroundTasks
-        # does not await async callables. Schedule it explicitly.
-        asyncio.create_task(
-            UploadOrchestrator.process_resume(
-                candidate.id,
-                storage_result["file_url"],
-            )
-        )
+        # Process in background with error handling
+        async def process_with_error_handling():
+            """Wrapper that catches errors and updates candidate status"""
+            try:
+                await UploadOrchestrator.process_resume(
+                    candidate.id,
+                    storage_result["file_url"],
+                    job_role=job_role,
+                )
+            except Exception as e:
+                logger.error(f"Background processing failed for candidate {candidate.id}: {str(e)}")
+                # Update candidate status to failed in case it wasn't already
+                try:
+                    from app.core.database import SessionLocal
+                    db_err = SessionLocal()
+                    cand = db_err.query(Candidate).filter(Candidate.id == candidate.id).first()
+                    if cand and cand.status != CandidateStatus.FAILED:
+                        cand.status = CandidateStatus.FAILED
+                        cand.error_message = f"Background processing error: {str(e)[:500]}"
+                        db_err.commit()
+                    db_err.close()
+                except Exception as db_err:
+                    logger.error(f"Failed to update candidate status: {db_err}")
+        
+        # Schedule the wrapped coroutine
+        asyncio.create_task(process_with_error_handling())
         
         uploaded_at = candidate.created_at
         if uploaded_at is not None:

@@ -33,9 +33,11 @@ def _require_engine():
         raise RuntimeError("Database is not configured or unreachable (engine not initialized)")
     return engine
 
-
 # Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_require_engine() if engine else None)
+# Defer binding to handle cases where engine is None at import time
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False)
+if engine:
+    SessionLocal.configure(bind=engine)
 
 # Base class for models
 Base = declarative_base()
