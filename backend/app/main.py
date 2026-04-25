@@ -60,13 +60,23 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Middlewares
+# Middlewares - CORS MUST be added first (last in execution order)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+        "*"
+    ],
+    max_age=86400,  # 24 hours
+    expose_headers=["Content-Length", "Content-Range"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 app.add_middleware(RequestLoggerMiddleware)

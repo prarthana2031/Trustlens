@@ -158,7 +158,18 @@ class UploadOrchestrator:
 
             # Update candidate with parsed data and full text
             logger.info(f"📝 Adding full_text ({len(full_text)} chars) to parsed_data")
+            if len(full_text.strip()) < 50:
+                logger.warning(f"⚠️ WARNING: Extracted text is too short ({len(full_text)} chars). PDF extraction may have failed!")
+                logger.info(f"   First 100 chars: {full_text[:100]}")
+            
             parsed_data["full_text"] = full_text
+            
+            # Validate full_text was added
+            if "full_text" not in parsed_data:
+                logger.error(f"❌ ERROR: full_text was not added to parsed_data!")
+            else:
+                logger.info(f"✅ Verified: full_text is in parsed_data (keys now: {list(parsed_data.keys())})")
+            
             candidate.parsed_data = parsed_data
             candidate.name = parsed_data.get("name", candidate.name)
             candidate.email = parsed_data.get("email", candidate.email)
@@ -168,6 +179,7 @@ class UploadOrchestrator:
             # Step 2: Score resume
             logger.info(f"Scoring resume for candidate {candidate_id}")
             logger.info(f"📋 Candidate required_skills: {candidate.required_skills}")
+            logger.info(f"📋 parsed_data has full_text? {('full_text' in parsed_data)}")
             # Use user-provided skills if available, otherwise ml_client will auto-extract
             score_data = await ml_client.score_resume(
                 parsed_data, 

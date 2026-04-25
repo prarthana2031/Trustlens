@@ -82,16 +82,26 @@ class MLClient:
             file_name = inner.get("file_name") or parsed_data.get("file_name") or "resume.pdf"
             
             # Extract full text – check top-level first (added by orchestrator)
+            # IMPORTANT: Try multiple locations to find the full_text
             resume_text = (
-                parsed_data.get("full_text") or          # <-- this is the key fix
-                inner.get("full_text") or
-                inner.get("text") or
-                inner.get("text_preview", "")
+                parsed_data.get("full_text") or          # Top-level full_text from orchestrator
+                inner.get("full_text") or               # Nested full_text (fallback)
+                inner.get("text") or                    # Some APIs return as 'text'
+                inner.get("text_preview", "")           # Last resort: preview
             )
             
+            # Convert to string if not already
+            if resume_text and not isinstance(resume_text, str):
+                resume_text = str(resume_text)
+            else:
+                resume_text = resume_text or ""
+            
             # VALIDATION: Warn if resume_text is empty
-            if not resume_text or len(resume_text.strip()) < 50:
-                logger.warning(f"⚠️ WARNING: Resume text is empty or too short ({len(resume_text)} chars). ML service may return default scores!")
+            if not resume_text.strip():
+                logger.error(f"❌ CRITICAL ERROR: Resume text is EMPTY! Cannot score without raw text.")
+                logger.error(f"   parsed_data keys: {list(parsed_data.keys())}")
+                logger.error(f"   inner keys: {list(inner.keys())}")
+                raise ValueError("Resume text is required for scoring but was empty. PDF extraction may have failed.")
             
             # Use provided skills, or extract from parsed data or resume text
             if required_skills is None:
@@ -103,18 +113,19 @@ class MLClient:
                 "required_skills": required_skills,
                 "resume": {
                     "file_name": file_name,
-                    "text": resume_text
+                    "text": resume_text.strip()  # Ensure no leading/trailing whitespace
                 },
                 "mode": mode
             }
             
-            logger.info(f"🔵 Scoring Request Details:")
+            logger.info(f"✅ 🔵 SCORING REQUEST - About to send to ML service:")
+            logger.info(f"   Endpoint: {settings.ML_SCORING_SERVICE_URL}/score")
             logger.info(f"   File: {file_name}")
             logger.info(f"   Mode: {mode}")
-            logger.info(f"   Text length: {len(resume_text)}")
+            logger.info(f"   Text length: {len(resume_text)} chars (after strip: {len(resume_text.strip())})")
             logger.info(f"   Skills count: {len(required_skills)}")
-            logger.info(f"   Skills list: {required_skills}")
-            logger.info(f"   Full payload keys: {list(payload.keys())}")
+            logger.info(f"   Skills: {required_skills}")
+            logger.info(f"   First 100 chars of text: {resume_text[:100]}")
             
             response = await self.client.post(
                 f"{settings.ML_SCORING_SERVICE_URL}/score",
@@ -122,7 +133,7 @@ class MLClient:
             )
             response.raise_for_status()
             result = response.json()
-            logger.info(f"ML response: score={result.get('score')}")
+            logger.info(f"✅ ML Scoring response received: score={result.get('score')}, components={list(result.get('components', {}).keys())}")
             
             # VALIDATION: Check if ML service returned suspiciously identical scores
             overall_score = result.get("score", 0.0)
