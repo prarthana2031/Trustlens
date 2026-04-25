@@ -1,5 +1,4 @@
 steps:
-  # 1. Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -9,13 +8,11 @@ steps:
       - 'backend/Dockerfile'
       - '.'
 
-  # 2. Push the image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/trustlens-backend-493416/backend-repo/backend-image:$SHORT_SHA'
 
-  # 3. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
     args:
@@ -29,20 +26,14 @@ steps:
       - '--port=8080'
       - '--memory=1Gi'
       - '--timeout=3600'
-      - '--set-env-vars=ENVIRONMENT=production,DEBUG=False,LOG_LEVEL=INFO'
-      - '--set-env-vars=SUPABASE_URL=https://gdsctcyiayizssytdnko.supabase.co'
-      - '--set-env-vars=SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdkc2N0Y3lpYXlpenNzeXRkbmtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyMzg4NDEsImV4cCI6MjA5MDgxNDg0MX0.QwnG6RJLUNVEBpRgSZjAm2J5Thvj1ftFHtqz41XsnuY'
-      - '--set-env-vars=SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdkc2N0Y3lpYXlpenNzeXRkbmtvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTIzODg0MSwiZXhwIjoyMDkwODE0ODQxfQ.fhd-5PneeP4uA3t27NGIzh0FCQr71P4B4jYFR9bHON0'
-      - '--set-env-vars=DATABASE_URL=postgresql://postgres.gdsctcyiayizssytdnko:Horanghae_17@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres'
-      - '--set-env-vars=ML_PARSING_SERVICE_URL=https://preeee-276-ml-service-api.hf.space'
-      - '--set-env-vars=ML_SCORING_SERVICE_URL=https://preeee-276-ml-service-api.hf.space'
-      - '--set-env-vars=ML_BIAS_SERVICE_URL=https://preeee-276-ml-service-api.hf.space'
-      - '--set-env-vars=ML_FEEDBACK_SERVICE_URL=https://preeee-276-ml-service-api.hf.space'
-      - '--set-env-vars=ML_ENHANCE_SERVICE_URL=https://preeee-276-ml-service-api.hf.space'
-      - '--set-env-vars=CORS_ORIGINS=["*"]'
+      - '--set-env-vars=DATABASE_URL=${_DATABASE_URL},HF_API_KEY=${_HF_API_KEY},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_URL=${_SUPABASE_URL}'
       - '--set-secrets=FIREBASE_KEY=firebase-service-account:latest'
 
 images:
+  - 'us-central1-docker.pkg.dev/trustlens-backend-493416/backend-repo/backend-image:$SHORT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
   - 'us-central1-docker.pkg.dev/trustlens-backend-493416/backend-repo/backend-image:$SHORT_SHA'
 
 options:
