@@ -84,9 +84,9 @@ app.add_middleware(
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 app.add_middleware(RequestLoggerMiddleware)
 
-# Add rate limiter (100 requests per minute per IP)
-from app.middlewares.rate_limiter import RateLimiterMiddleware
-app.add_middleware(RateLimiterMiddleware, requests_per_minute=100)
+# Add rate limiter (100 requests per minute per IP) - TEMPORARILY DISABLED
+# from app.middlewares.rate_limiter import RateLimiterMiddleware
+# app.add_middleware(RateLimiterMiddleware, requests_per_minute=100)
 
 # Exception handlers
 add_exception_handlers(app)

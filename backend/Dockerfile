@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Set working directory inside container
 WORKDIR /app_root
 
-# Install system dependencies (required for psycopg2-binary, etc.)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
@@ -12,24 +12,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip first
+# Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip
 
-# Copy requirements from ROOT (build context is branch root)
+# Copy requirements first (for better caching)
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all backend code (inside 'backend/' folder of the context)
-# ... (after your pip installs)
-COPY backend/ .
+# Copy everything from your local directory into /app_root
+# If you are running this from INSIDE the Backend folder, use '.' 
+# If you are running from one level up, use 'backend/'
+COPY . .
 
-# This ensures all your internal imports work
-ENV PYTHONPATH=.
-
-# Ensure stdout/stderr are unbuffered for Cloud Run logging
+# CRITICAL: Force the PYTHONPATH to app_root
+# This ensures 'import app.main' works from anywhere in the container
+ENV PYTHONPATH=/app_root
 ENV PYTHONUNBUFFERED=1
 
-# Cloud Run injects $PORT (usually 8080), so we use that variable
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --proxy-headers --timeout-keep-alive 65
+# Cloud Run injects $PORT. Using the list format ["uvicorn", ...] is 
+# preferred for better signal handling (SIGTERM).
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --proxy-headers --timeout-keep-alive 65"]
