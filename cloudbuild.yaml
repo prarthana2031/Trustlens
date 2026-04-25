@@ -1,5 +1,13 @@
+steps:
+  # 1. Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/resume-backend', '.']
+  
+  # 2. Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/resume-backend']
 
-# Deploy
+  # 3. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -11,8 +19,6 @@
       - '--region'
       - 'us-central1'
       - '--allow-unauthenticated'
-      # Reference the secret name, but keep the value in Secret Manager
-      - '--set-secrets=FIREBASE_KEY=firebase-service-account:latest'
-      # Keep your non-sensitive environment variables
-      - '--update-env-vars=SUPABASE_URL=your-project-url,ENVIRONMENT=production'
-  logging: CLOUD_LOGGING_ONLY  # Ensures logs go straight to Cloud Logging
+
+options:
+  logging: CLOUD_LOGGING_ONLY
