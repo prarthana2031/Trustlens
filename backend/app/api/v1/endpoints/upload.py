@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import timezone
@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 async def upload_resume(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    candidate_name: Optional[str] = None,
-    candidate_email: Optional[str] = None,
-    required_skills: Optional[str] = Query(None, description="Comma-separated list of skills to match against"),
-    job_role: Optional[str] = Query(None, description="Job role for candidate report"),
+    candidate_name: Optional[str] = Form(None),
+    candidate_email: Optional[str] = Form(None),
+    required_skills: Optional[str] = Form(None, description="Comma-separated list of skills to match against"),
+    job_role: Optional[str] = Form(None, description="Job role for candidate report"),
     db: Session = Depends(get_db)
 ):
     """
@@ -134,7 +134,7 @@ async def upload_resume(
 async def batch_upload(
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
-    job_role: Optional[str] = Query(None, description="Job role for all candidates"),
+    job_role: Optional[str] = Form(None, description="Job role for all candidates"),
     db: Session = Depends(get_db)
 ):
     """
