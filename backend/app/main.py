@@ -107,10 +107,11 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 async def shutdown_event():
     """Handle graceful shutdown"""
     logger.info("⏹️ Shutting down server...")
-    # Cancel any pending background tasks
+    # Cancel any pending background tasks (except current)
     import asyncio
+    current_task = asyncio.current_task()
     for task in asyncio.all_tasks():
-        if not task.done():
+        if task is not current_task and not task.done():
             task.cancel()
     logger.info("✅ Shutdown complete")
 
