@@ -1,391 +1,547 @@
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from app.core.config import settings
 import logging
 from tenacity import retry, stop_after_attempt, wait_exponential
 from urllib.parse import urlparse
 from app.services.storage_service import storage_service
-import hashlib
 
 logger = logging.getLogger(__name__)
 
+# Single base URL — all ML endpoints are on the same service
+ML_BASE_URL = settings.ML_PARSING_SERVICE_URL  # e.g. https://preeee-276-ml-service-api.hf.space
+
+
+def _build_parsed_resume(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert our stored parsed_data into the ParsedResume schema the ML service expects.
+
+    Our storage wraps the ML response like:
+    {
+        "parsed_data": { <actual ParsedResume fields> },
+        "mode": "baseline",
+        "full_text": "...",
+        ...
+    }
+    The ML service wants the inner ParsedResume object directly.
+    """
+    inner = parsed_data.get("parsed_data", parsed_data)
+
+    # Normalise skills: ML service expects [{"name": str, "category": str, "proficiency": str}]
+    raw_skills = inner.get("skills", [])
+    normalised_skills = []
+    for s in raw_skills:
+        if isinstance(s, dict):
+            normalised_skills.append({
+                "name": s.get("name", ""),
+                "category": s.get("category", "other"),
+                "proficiency": s.get("proficiency", "intermediate"),
+            })
+        elif isinstance(s, str):
+            # Handle comma-separated skill strings
+            for part in s.split(","):
+                part = part.strip()
+                if part:
+                    normalised_skills.append({
+                        "name": part,
+                        "category": "other",
+                        "proficiency": "intermediate",
+                    })
+
+    # Normalise experience entries
+    raw_exp = inner.get("experience", [])
+    normalised_exp = []
+    for e in raw_exp:
+        if isinstance(e, dict):
+            normalised_exp.append({
+                "title": e.get("title", ""),
+                "company": e.get("company", ""),
+                "start_date": e.get("start_date"),
+                "end_date": e.get("end_date"),
+                "duration_years": e.get("duration_years", 0.0),
+                "description": e.get("description", ""),
+            })
+
+    # Normalise education entries
+    raw_edu = inner.get("education", [])
+    normalised_edu = []
+    for e in raw_edu:
+        if isinstance(e, dict):
+            normalised_edu.append({
+                "degree": e.get("degree", ""),
+                "institution": e.get("institution", ""),
+                "graduation_year": e.get("graduation_year"),
+                "field_of_study": e.get("field_of_study"),
+            })
+
+    # Normalise projects
+    raw_proj = inner.get("projects", [])
+    normalised_proj = []
+    for p in raw_proj:
+        if isinstance(p, dict):
+            normalised_proj.append({
+                "name": p.get("name", ""),
+                "description": p.get("description", ""),
+                "technologies": p.get("technologies", []),
+            })
+
+    # contact_info
+    contact = inner.get("contact_info") or {}
+
+    return {
+        "file_name": inner.get("file_name", "resume.pdf"),
+        "upload_timestamp": inner.get("upload_timestamp", "2024-01-01T00:00:00"),
+        "contact_info": {
+            "name": contact.get("name"),
+            "email": contact.get("email"),
+            "phone": contact.get("phone"),
+            "location": contact.get("location"),
+            "linkedin": contact.get("linkedin"),
+            "github": contact.get("github"),
+        },
+        "summary": inner.get("summary"),
+        "skills": normalised_skills,
+        "soft_skills": inner.get("soft_skills", []),
+        "experience": normalised_exp,
+        "education": normalised_edu,
+        "projects": normalised_proj,
+        "certifications": inner.get("certifications", []),
+        "achievements": inner.get("achievements", []),
+        "languages": inner.get("languages", []),
+        "publications": inner.get("publications", []),
+        "volunteer": inner.get("volunteer", []),
+        "total_experience_years": float(inner.get("total_experience_years", 0.0)),
+        "skill_count": int(inner.get("skill_count", len(normalised_skills))),
+        "education_level": inner.get("education_level", ""),
+    }
+
+
+def _get_raw_text(parsed_data: Dict[str, Any]) -> Optional[str]:
+    """Extract full resume text from our stored parsed_data structure."""
+    text = parsed_data.get("full_text") or parsed_data.get("text")
+    if not text:
+        inner = parsed_data.get("parsed_data", {})
+        if isinstance(inner, dict):
+            text = inner.get("full_text") or inner.get("text") or inner.get("text_preview")
+    return text or None
+
+
 class MLClient:
     def __init__(self):
-        # Cloud Run requests can timeout at 540s, so keep per-request timeout lower
-        # Use different timeouts for different operations
-        self.parse_timeout = 120.0  # 2 minutes for parsing
-        self.score_timeout = 180.0  # 3 minutes for scoring
-        self.feedback_timeout = 60.0  # 1 minute for feedback
-        
-        # Use AsyncClient for async methods (prevents blocking)
-        self.client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
-    
+        self.base_url = ML_BASE_URL.rstrip("/")
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)
+        )
+
+    # ──────────────────────────────────────────────
+    # POST /parse   (multipart/form-data)
+    # ──────────────────────────────────────────────
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def parse_resume(self, file_url: str) -> Dict[str, Any]:
-        """Call ML parsing service (multipart/form-data with `file`).
-        
-        Returns:
-            Dict with parsed resume data. Must contain:
-            - parsed_data: dict with resume structure
-            - file_name: str
-        
-        Raises:
-            Exception: If parsing fails after retries
         """
-        try:
-            # Download bytes using a fresh signed URL if this is a Supabase public URL.
-            signed_url = file_url
-            parsed = urlparse(file_url)
-            path = parsed.path or ""
-            bucket = settings.STORAGE_BUCKET_NAME
-            public_marker = f"/storage/v1/object/public/{bucket}/"
-            sign_marker = f"/storage/v1/object/sign/{bucket}/"
-            object_key = None
-            if public_marker in path:
-                object_key = path.split(public_marker, 1)[1].lstrip("/")
-            elif sign_marker in path:
-                object_key = path.split(sign_marker, 1)[1].lstrip("/")
+        Download the resume file and POST it to /parse.
+        Returns the full parsed resume dict from the ML service.
+        """
+        # Refresh signed URL if it's a Supabase storage URL
+        signed_url = file_url
+        parsed = urlparse(file_url)
+        path = parsed.path or ""
+        bucket = settings.STORAGE_BUCKET_NAME
+        for marker in [
+            f"/storage/v1/object/public/{bucket}/",
+            f"/storage/v1/object/sign/{bucket}/",
+        ]:
+            if marker in path:
+                object_key = path.split(marker, 1)[1].lstrip("/")
+                try:
+                    signed_url = storage_service.get_file_url(object_key)
+                except Exception:
+                    pass
+                break
 
-            if object_key:
-                candidate_keys = [object_key]
-                if object_key.startswith(f"{bucket}/"):
-                    candidate_keys.append(object_key[len(bucket) + 1 :])
-                for key in candidate_keys:
-                    try:
-                        signed_url = storage_service.get_file_url(key)
-                        break
-                    except Exception:
-                        continue
+        # Download file bytes
+        file_resp = await self.client.get(signed_url)
+        file_resp.raise_for_status()
+        file_bytes = file_resp.content
+        filename = path.rsplit("/", 1)[-1] or "resume.pdf"
+        content_type = file_resp.headers.get("content-type", "application/pdf")
 
-            # Use async client for GET
-            file_resp = await self.client.get(signed_url)
-            file_resp.raise_for_status()
-            file_bytes = file_resp.content
-            filename = parsed.path.rsplit("/", 1)[-1] or "resume"
-            content_type = file_resp.headers.get("content-type") or "application/octet-stream"
+        # POST multipart to /parse
+        response = await self.client.post(
+            f"{self.base_url}/parse",
+            files={"file": (filename, file_bytes, content_type)},
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        result = response.json()
 
-            # POST with files (multipart)
-            response = await self.client.post(
-                f"{settings.ML_PARSING_SERVICE_URL}/parse",
-                files={"file": (filename, file_bytes, content_type)},
-                timeout=self.parse_timeout,
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            # Validate response has required fields
-            if not isinstance(result, dict):
-                raise ValueError(f"ML parse service returned non-dict: {type(result)}")
-            if "parsed_data" not in result:
-                logger.warning(f"⚠️ ML parse response missing 'parsed_data'. Keys: {list(result.keys())}")
-            
-            logger.info(f"✅ ML parse service returned keys: {list(result.keys())}, file_name={result.get('file_name')}")
-            return result
-        except Exception as e:
-            logger.error(f"ML parsing failed: {str(e)}")
-            raise
-    
+        if not isinstance(result, dict):
+            raise ValueError(f"/parse returned non-dict: {type(result)}")
+
+        logger.info(f"✅ /parse success. Keys: {list(result.keys())}")
+        return result
+
+    # ──────────────────────────────────────────────
+    # POST /score   (JSON — ScoreRequest schema)
+    # ──────────────────────────────────────────────
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def score_resume(self, parsed_data: Dict[str, Any], mode: str = "baseline", required_skills: list = None) -> Dict[str, Any]:
-        """Call ML scoring service with resume text.
-        
-        Validates response contains required fields.
-        Returns: Dict with overall_score and components (skills, experience, education).
-        
-        Args:
-            parsed_data: Resume data from ML parser
-            mode: Scoring mode (baseline or other)
-            required_skills: Optional list of skills to match against. If provided, overrides auto-extraction.
+    async def score_resume(
+        self,
+        parsed_data: Dict[str, Any],
+        mode: str = "baseline",
+        required_skills: Optional[List[str]] = None,
+        fairness_mode: str = "balanced",
+        weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """
-        try:
-            # parsed_data may contain:
-            # - "parsed_data" (from ML parse) and
-            # - "full_text" (added by upload orchestrator)
-            inner = parsed_data.get("parsed_data", {})
-            
-            # Extract file name (prefer from inner, else from top)
-            file_name = inner.get("file_name") or parsed_data.get("file_name") or "resume.pdf"
-            
-            # Extract full text – check top-level first (added by orchestrator)
-            # IMPORTANT: Try multiple locations to find the full_text
-            resume_text = (
-                parsed_data.get("full_text") or          # Top-level full_text from orchestrator
-                inner.get("full_text") or               # Nested full_text (fallback)
-                inner.get("text") or                    # Some APIs return as 'text'
-                inner.get("text_preview", "")           # Last resort: preview
-            )
-            
-            # Convert to string if not already
-            if resume_text and not isinstance(resume_text, str):
-                resume_text = str(resume_text)
-            else:
-                resume_text = resume_text or ""
-            
-            # VALIDATION: Warn if resume_text is empty
-            if not resume_text.strip():
-                logger.error(f"❌ CRITICAL ERROR: Resume text is EMPTY! Cannot score without raw text.")
-                logger.error(f"   parsed_data keys: {list(parsed_data.keys())}")
-                logger.error(f"   inner keys: {list(inner.keys())}")
-                raise ValueError("Resume text is required for scoring but was empty. PDF extraction may have failed.")
-            
-            # Use provided skills, or extract from parsed data or resume text
-            if required_skills is None:
-                required_skills = MLClient._extract_skills_from_text(resume_text, inner)
-            else:
-                logger.info(f"✅ Using user-provided skills: {required_skills}")
-            
-            payload = {
-                "required_skills": required_skills,
-                "resume": {
-                    "file_name": file_name,
-                    "text": resume_text.strip()  # Ensure no leading/trailing whitespace
-                },
-                "mode": mode
-            }
-            
-            logger.info(f"✅ 🔵 SCORING REQUEST - About to send to ML service:")
-            logger.info(f"   Endpoint: {settings.ML_SCORING_SERVICE_URL}/score")
-            logger.info(f"   File: {file_name}")
-            logger.info(f"   Mode: {mode}")
-            logger.info(f"   Text length: {len(resume_text)} chars (after strip: {len(resume_text.strip())})")
-            logger.info(f"   Skills count: {len(required_skills)}")
-            logger.info(f"   Skills: {required_skills}")
-            logger.info(f"   First 100 chars of text: {resume_text[:100]}")
-            
-            response = await self.client.post(
-                f"{settings.ML_SCORING_SERVICE_URL}/score",
-                json=payload,
-            )
-            response.raise_for_status()
-            result = response.json()
-            logger.info(f"✅ ML Scoring response received: score={result.get('score')}, components={list(result.get('components', {}).keys())}")
-            
-            # VALIDATION: Check if ML service returned suspiciously identical scores
-            overall_score = result.get("score", 0.0)
-            # Check both 'components' and 'breakdown' keys (different APIs use different names)
-            components = result.get("components") or result.get("breakdown") or {}
-            
-            logger.info(f"🔍 Response structure - Overall: {overall_score}, Components keys: {list(components.keys())}")
-            
-            # If scores look like defaults (15.0, 0.0, 30.0, 50.0), generate content-based variation
-            if (overall_score == 15.0 and 
-                components.get("skills") == 0.0 and 
-                components.get("experience") == 30.0 and 
-                components.get("education") == 50.0):
-                logger.warning(f"🚨 DETECTED: ML service returned default hardcoded scores! Applying content-based variation...")
-                logger.info(f"Resume text length: {len(resume_text)}, Skills: {required_skills}")
-                overall_score, components = MLClient._generate_content_based_score(
-                    resume_text, 
-                    required_skills, 
-                    file_name
-                )
-            
-            # Return standardized format – use "components" (orchestrator expects this)
-            return {
-                "overall_score": overall_score,
-                "components": components,      # key name as orchestrator expects
-                "explanation": result.get("short_explanation", ""),
-                "fairness_applied": result.get("fairness_applied", False),
-                "matched_skills": result.get("matched_skills", []),
-                "missing_skills": result.get("missing_skills", []),
-                "mode": result.get("mode", mode)
-            }
-        except Exception as e:
-            logger.error(f"ML scoring failed: {str(e)}")
-            raise
-    
-    @staticmethod
-    def _generate_content_based_score(resume_text: str, required_skills: list, file_name: str) -> tuple[float, Dict[str, float]]:
-        """Generate content-based scores when ML service fails or returns defaults.
-        
-        Creates varying scores based on:
-        - Resume text length and complexity
-        - Number of required skills found
-        - Content hash for consistent variation per resume
+        POST /score with ScoreRequest schema.
+
+        ScoreRequest:
+          required_skills: list[str]   (required)
+          resume: ParsedResume         (required)
+          raw_text: str | null
+          mode: str = "baseline"
+          fairness_mode: str = "balanced"
+          custom_ignore_fields: list[str] | null
+          weights: dict | null
         """
-        logger.info(f"⚙️ Starting content-based scoring for {file_name}")
-        logger.info(f"   Resume text length: {len(resume_text)} chars")
-        logger.info(f"   Required skills: {required_skills}")
-        
-        # Create a content hash to ensure same resume gets same variation
-        text_hash = int(hashlib.md5(resume_text.encode()).hexdigest(), 16) % 100
-        
-        # Base calculation factors
-        text_length = len(resume_text.strip())
-        skill_match_count = len([s for s in required_skills if s.lower() in resume_text.lower()]) if required_skills else 0
-        
-        logger.info(f"   Text hash: {text_hash}, Skill matches: {skill_match_count}/{len(required_skills)}")
-        
-        # Skill score: based on matched skills vs required
-        if required_skills:
-            skill_score = min(100.0, (skill_match_count / max(1, len(required_skills))) * 100)
-        else:
-            skill_score = min(100.0, (text_length / 500) * 50)  # Up to 50 points based on length
-        
-        # Experience score: based on keywords and text length
-        experience_keywords = ["worked", "project", "developed", "implemented", "led", "managed", "years", "experience"]
-        exp_count = sum(1 for kw in experience_keywords if kw in resume_text.lower())
-        experience_score = min(100.0, (exp_count / len(experience_keywords)) * 100 + (text_length / 1000) * 20)
-        
-        logger.info(f"   Experience keywords found: {exp_count}/8")
-        
-        # Education score: based on degree keywords
-        education_keywords = ["bachelor", "master", "phd", "degree", "university", "college", "graduated", "diploma"]
-        edu_count = sum(1 for kw in education_keywords if kw in resume_text.lower())
-        education_score = min(100.0, (edu_count / len(education_keywords)) * 100 + 20)
-        
-        logger.info(f"   Education keywords found: {edu_count}/8")
-        
-        # Add hash-based variation to ensure different resumes get different scores
-        variation = (text_hash % 20) - 10  # -10 to +10 variation
-        skill_score = max(0, min(100, skill_score + variation))
-        experience_score = max(0, min(100, experience_score + variation))
-        education_score = max(0, min(100, education_score + variation))
-        
-        # Overall score: weighted average
-        overall_score = (skill_score * 0.4 + experience_score * 0.3 + education_score * 0.3)
-        
-        logger.info(f"📊 Generated content-based scores for {file_name}:")
-        logger.info(f"   ✅ Skill Score: {skill_score:.1f}")
-        logger.info(f"   ✅ Experience Score: {experience_score:.1f}")
-        logger.info(f"   ✅ Education Score: {education_score:.1f}")
-        logger.info(f"   ✅ Overall Score: {overall_score:.1f}")
-        
-        components = {
-            "skills": skill_score,
-            "experience": experience_score,
-            "education": education_score,
-            "projects": 0.0,
-            "soft_skills": 0.0
+        resume_obj = _build_parsed_resume(parsed_data)
+        raw_text = _get_raw_text(parsed_data)
+
+        payload = {
+            "required_skills": required_skills or [],
+            "resume": resume_obj,
+            "raw_text": raw_text,
+            "mode": mode,
+            "fairness_mode": fairness_mode,
+            "weights": weights,
         }
-        
-        return overall_score, components
-    
-    @staticmethod
-    def _extract_skills_from_text(resume_text: str, parsed_inner: Dict[str, Any]) -> list:
-        """Extract skills from resume text and parsed data."""
-        skills = set()
-        
-        # First, try to get from parsed data if available
-        if isinstance(parsed_inner, dict):
-            if "skills" in parsed_inner:
-                existing_skills = parsed_inner.get("skills", [])
-                if isinstance(existing_skills, list):
-                    skills.update([s for s in existing_skills if isinstance(s, str)])
-            
-            # Also check other common fields
-            for field in ["technologies", "tools", "technical_skills", "expertise"]:
-                if field in parsed_inner:
-                    field_val = parsed_inner.get(field, [])
-                    if isinstance(field_val, list):
-                        skills.update([s for s in field_val if isinstance(s, str)])
-        
-        # Common tech skills to look for in text
-        common_skills = [
-            "Python", "JavaScript", "Java", "C++", "C#", "Go", "Rust", "PHP", "Ruby", "SQL",
-            "React", "Vue", "Angular", "Node.js", "Express", "Django", "Flask", "FastAPI",
-            "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Git", "CI/CD", "Jenkins",
-            "PostgreSQL", "MongoDB", "MySQL", "Redis", "Elasticsearch",
-            "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "Scikit-learn",
-            "Data Analysis", "Data Science", "Analytics", "Tableau", "Power BI",
-            "HTML", "CSS", "REST API", "GraphQL", "Microservices", "System Design",
-            "Agile", "Scrum", "DevOps", "Linux", "Windows", "MacOS", "Networking"
-        ]
-        
-        # Search for these skills in resume text (case-insensitive)
-        text_lower = resume_text.lower()
-        for skill in common_skills:
-            if skill.lower() in text_lower:
-                skills.add(skill)
-        
-        result_skills = list(skills)
-        logger.info(f"Extracted {len(result_skills)} skills from resume: {result_skills[:10]}")
-        return result_skills
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def analyze_bias(self, candidates_data: list, scores: list[float]) -> Dict[str, Any]:
-        """Call ML bias analysis service"""
-        try:
-            response = await self.client.post(
-                f"{settings.ML_BIAS_SERVICE_URL}/bias/detect",
-                json={"candidates_data": candidates_data, "scores": scores}
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"ML bias analysis failed: {str(e)}")
-            raise
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def generate_feedback(self, score_data: Dict[str, Any], parsed_data: Dict[str, Any]) -> str:
-        """Call ML feedback service"""
-        try:
-            response = await self.client.post(
-                f"{settings.ML_FEEDBACK_SERVICE_URL}/generate",
-                json={
-                    "score_data": score_data,
-                    "parsed_data": parsed_data
-                }
-            )
-            response.raise_for_status()
-            return response.json().get("feedback", "")
-        except httpx.HTTPStatusError as e:
-            if e.response is not None and e.response.status_code == 404:
-                return ""
-            logger.error(f"ML feedback generation failed: {str(e)}")
-            raise
-        except Exception as e:
-            logger.error(f"ML feedback generation failed: {str(e)}")
-            raise
-    
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-    async def candidate_report(self, parsed_data: Dict[str, Any], required_skills: list, job_role: str = None) -> Dict[str, Any]:
-        """Call ML candidate report service to get detailed report.
-        
-        Args:
-            parsed_data: Parsed resume data from ML parser
-            required_skills: List of required skills to match against
-            job_role: Job role for context (optional)
-        
-        Returns:
-            Dict with overall_score, matched_skills, missing_skills, recommendations, explanation
+
+        logger.info(
+            f"📤 POST /score | mode={mode} | skills={len(required_skills or [])} | "
+            f"text_len={len(raw_text or '')}"
+        )
+
+        response = await self.client.post(
+            f"{self.base_url}/score",
+            json=payload,
+            timeout=180.0,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        # ScoreResponse fields:
+        # score, mode, matched_skills, missing_skills, additional_skills,
+        # short_explanation, components, weights_used, fairness_applied,
+        # ignored_fields, gemini_score_used
+        logger.info(f"✅ /score success. Score={result.get('score')} mode={result.get('mode')}")
+
+        return {
+            "overall_score": result.get("score", 0.0),
+            "components": result.get("components", {}),
+            "explanation": result.get("short_explanation", ""),
+            "fairness_applied": result.get("fairness_applied", False),
+            "matched_skills": result.get("matched_skills", []),
+            "missing_skills": result.get("missing_skills", []),
+            "additional_skills": result.get("additional_skills", []),
+            "weights_used": result.get("weights_used", {}),
+            "ignored_fields": result.get("ignored_fields", []),
+            "gemini_score_used": result.get("gemini_score_used"),
+            "mode": result.get("mode", mode),
+        }
+
+    # ──────────────────────────────────────────────
+    # POST /candidate-report   (JSON — CandidateReportRequest)
+    # ──────────────────────────────────────────────
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
+    async def candidate_report(
+        self,
+        parsed_data: Dict[str, Any],
+        required_skills: List[str],
+        job_role: Optional[str] = None,
+        mode: str = "enhanced",
+        fairness_mode: str = "balanced",
+        weights: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """
-        try:
-            payload = {
-                "parsed_data": parsed_data,
-                "required_skills": required_skills or [],
-                "job_role": job_role or ""
-            }
-            
-            logger.info(f"📋 Generating candidate report with {len(required_skills or [])} skills for role: {job_role or 'N/A'}")
-            
-            response = await self.client.post(
-                f"{settings.ML_ENHANCE_SERVICE_URL}/candidate-report",
-                json=payload,
-                timeout=120.0  # Longer timeout for comprehensive report
-            )
-            response.raise_for_status()
-            result = response.json()
-            
-            logger.info(f"✅ Candidate report generated. Overall score: {result.get('overall_score')}")
-            
-            return {
-                "overall_score": result.get("overall_score", 0.0),
-                "matched_skills": result.get("matched_skills", []),
-                "missing_skills": result.get("missing_skills", []),
-                "recommendations": result.get("recommendations", []),
-                "explanation": result.get("explanation", ""),
-                "skill_match_percentage": result.get("skill_match_percentage", 0),
-                "experience_level": result.get("experience_level", ""),
-                "next_steps": result.get("next_steps", [])
-            }
-        except Exception as e:
-            logger.error(f"ML candidate report generation failed: {str(e)}")
-            raise
-    
+        POST /candidate-report with CandidateReportRequest schema.
+
+        CandidateReportRequest:
+          required_skills: list[str]   (required)
+          resume: ParsedResume         (required)
+          raw_text: str | null
+          mode: str = "enhanced"
+          fairness_mode: str = "balanced"
+          custom_ignore_fields: list[str] | null
+          weights: dict | null
+
+        CandidateReportResponse fields:
+          candidate_name, overall_score, verdict, score_breakdown,
+          matched_skills, missing_skills, additional_skills,
+          experience_years, education_level, soft_skills,
+          project_count, certification_count, achievement_count,
+          language_count, detailed_explanation, recommendations, weights_used
+        """
+        resume_obj = _build_parsed_resume(parsed_data)
+        raw_text = _get_raw_text(parsed_data)
+
+        payload = {
+            "required_skills": required_skills or [],
+            "resume": resume_obj,
+            "raw_text": raw_text,
+            "mode": mode,
+            "fairness_mode": fairness_mode,
+            "weights": weights,
+        }
+
+        logger.info(
+            f"📋 POST /candidate-report | role={job_role or 'N/A'} | "
+            f"skills={len(required_skills or [])} | mode={mode}"
+        )
+
+        response = await self.client.post(
+            f"{self.base_url}/candidate-report",
+            json=payload,
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        logger.info(
+            f"✅ /candidate-report success. "
+            f"Score={result.get('overall_score')} verdict={result.get('verdict')}"
+        )
+
+        return {
+            "overall_score": result.get("overall_score", 0.0),
+            "verdict": result.get("verdict", ""),
+            "score_breakdown": result.get("score_breakdown", {}),
+            "matched_skills": result.get("matched_skills", []),
+            "missing_skills": result.get("missing_skills", []),
+            "additional_skills": result.get("additional_skills", []),
+            "experience_years": result.get("experience_years", 0.0),
+            "education_level": result.get("education_level", ""),
+            "soft_skills": result.get("soft_skills", []),
+            "project_count": result.get("project_count", 0),
+            "certification_count": result.get("certification_count", 0),
+            "recommendations": result.get("recommendations", []),
+            "explanation": result.get("detailed_explanation", ""),
+            "skill_match_percentage": (
+                round(
+                    len(result.get("matched_skills", [])) /
+                    max(1, len(required_skills)) * 100, 1
+                )
+                if required_skills else 0.0
+            ),
+            "experience_level": _years_to_level(result.get("experience_years", 0.0)),
+            "weights_used": result.get("weights_used", {}),
+        }
+
+    # ──────────────────────────────────────────────
+    # POST /bias/detect   (JSON — BiasRequest)
+    # ──────────────────────────────────────────────
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def analyze_bias(
+        self,
+        candidates_data: List[Dict[str, str]],
+        scores: List[float],
+    ) -> Dict[str, Any]:
+        """
+        POST /bias/detect
+
+        BiasRequest:
+          scores: list[float]               (required)
+          candidates_data: list[dict[str,str]]  (required)
+        """
+        payload = {
+            "scores": scores,
+            "candidates_data": candidates_data,
+        }
+        response = await self.client.post(
+            f"{self.base_url}/bias/detect",
+            json=payload,
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /bias/detect success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/feedback   (JSON — FeedbackRequest)
+    # ──────────────────────────────────────────────
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def generate_feedback(
+        self,
+        score_data: Dict[str, Any],
+        parsed_data: Dict[str, Any],
+    ) -> str:
+        """
+        POST /gemini/feedback
+
+        FeedbackRequest:
+          candidate_name: str    (required)
+          score: float           (required)
+          verdict: str           (required)
+          missing_skills: list[str]  (required)
+          experience_years: float    (required)
+        """
+        inner = parsed_data.get("parsed_data", parsed_data)
+        contact = inner.get("contact_info") or {}
+        candidate_name = contact.get("name") or "Candidate"
+
+        payload = {
+            "candidate_name": candidate_name,
+            "score": float(score_data.get("overall_score", score_data.get("score", 0.0))),
+            "verdict": score_data.get("verdict", "under_review"),
+            "missing_skills": score_data.get("missing_skills", []),
+            "experience_years": float(inner.get("total_experience_years", 0.0)),
+        }
+
+        response = await self.client.post(
+            f"{self.base_url}/gemini/feedback",
+            json=payload,
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        result = response.json()
+        logger.info("✅ /gemini/feedback success")
+        return result.get("feedback", result.get("text", ""))
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/interview-questions
+    # ──────────────────────────────────────────────
+    async def generate_interview_questions(
+        self,
+        required_skills: List[str],
+        missing_skills: List[str],
+        resume_text: str,
+    ) -> Dict[str, Any]:
+        """
+        POST /gemini/interview-questions
+
+        InterviewQuestionsRequest:
+          required_skills: list[str]
+          missing_skills: list[str]
+          resume_text: str
+        """
+        payload = {
+            "required_skills": required_skills,
+            "missing_skills": missing_skills,
+            "resume_text": resume_text,
+        }
+        response = await self.client.post(
+            f"{self.base_url}/gemini/interview-questions",
+            json=payload,
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /gemini/interview-questions success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/extract-skills
+    # ──────────────────────────────────────────────
+    async def extract_skills_from_jd(self, job_description: str) -> Dict[str, Any]:
+        """
+        POST /gemini/extract-skills
+
+        JobDescriptionRequest:
+          job_description: str
+        """
+        response = await self.client.post(
+            f"{self.base_url}/gemini/extract-skills",
+            json={"job_description": job_description},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /gemini/extract-skills success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/summarise
+    # ──────────────────────────────────────────────
+    async def summarise_resume(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
+        """POST /gemini/summarise — takes a ParsedResume object."""
+        resume_obj = _build_parsed_resume(parsed_data)
+        response = await self.client.post(
+            f"{self.base_url}/gemini/summarise",
+            json=resume_obj,
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /gemini/summarise success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/rank-candidates
+    # ──────────────────────────────────────────────
+    async def rank_candidates(
+        self,
+        candidates: List[Dict],
+        job_description: str,
+    ) -> Dict[str, Any]:
+        """
+        POST /gemini/rank-candidates
+
+        RankCandidatesRequest:
+          candidates: list[object]
+          job_description: str
+        """
+        response = await self.client.post(
+            f"{self.base_url}/gemini/rank-candidates",
+            json={"candidates": candidates, "job_description": job_description},
+            timeout=90.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /gemini/rank-candidates success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # POST /gemini/cultural-fit
+    # ──────────────────────────────────────────────
+    async def cultural_fit(
+        self,
+        resume_text: str,
+        company_values: List[str],
+    ) -> Dict[str, Any]:
+        """
+        POST /gemini/cultural-fit
+
+        CulturalFitRequest:
+          resume_text: str
+          company_values: list[str]
+        """
+        response = await self.client.post(
+            f"{self.base_url}/gemini/cultural-fit",
+            json={"resume_text": resume_text, "company_values": company_values},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        logger.info("✅ /gemini/cultural-fit success")
+        return response.json()
+
+    # ──────────────────────────────────────────────
+    # GET /skills
+    # ──────────────────────────────────────────────
+    async def get_skills(self) -> Dict[str, Any]:
+        """GET /skills — returns the ML service's known skill list."""
+        response = await self.client.get(f"{self.base_url}/skills", timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+
     async def close(self):
         """Close the HTTP client gracefully."""
         await self.client.aclose()
+
+
+def _years_to_level(years: float) -> str:
+    if years < 2:
+        return "Entry Level"
+    elif years < 5:
+        return "Mid Level"
+    else:
+        return "Senior Level"
+
 
 # Singleton instance
 ml_client = MLClient()

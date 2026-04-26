@@ -12,6 +12,7 @@ from app.orchestrators.upload_orchestrator import UploadOrchestrator
 from app.models.score import Score
 from app.models.feedback import Feedback
 import logging
+import re
 from datetime import timezone, datetime
 
 router = APIRouter()
@@ -31,6 +32,210 @@ def _status_str(candidate: Candidate) -> str:
     if isinstance(s, CandidateStatus):
         return s.value
     return str(s).lower()
+
+
+def _extract_skills_from_parsed(parsed: dict) -> List[str]:
+    """
+    Job-role agnostic skill extraction from parsed_data.
+    Handles both plain string lists and object lists like {"name": "python", ...}.
+    Also checks nested parsed_data structures.
+    """
+    candidate_skills = []
+
+    def extract_from_val(val):
+        skills = []
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict):
+                    # Handle {"name": "python"} or {"name": "selenium,jira"} format
+                    name = item.get("name", "")
+                    if name:
+                        skills.extend([s.strip() for s in name.split(",") if s.strip()])
+                elif isinstance(item, str) and item.strip():
+                    skills.extend([s.strip() for s in item.split(",") if s.strip()])
+        elif isinstance(val, str) and val.strip():
+            skills.extend([s.strip() for s in val.split(",") if s.strip()])
+        return skills
+
+    if not isinstance(parsed, dict):
+        return candidate_skills
+
+    # Check top-level skill fields
+    for field in ["skills", "technical_skills", "technologies", "tech_stack", "competencies", "expertise"]:
+        val = parsed.get(field)
+        if val:
+            candidate_skills.extend(extract_from_val(val))
+
+    # Check nested parsed_data structure (your ML parser wraps data this way)
+    if not candidate_skills:
+        inner = parsed.get("parsed_data", {})
+        if isinstance(inner, dict):
+            for field in ["skills", "technical_skills", "technologies", "tech_stack", "competencies", "expertise"]:
+                val = inner.get(field)
+                if val:
+                    candidate_skills.extend(extract_from_val(val))
+                    if candidate_skills:
+                        break
+
+    # Deduplicate while preserving order
+    return list(dict.fromkeys(candidate_skills))
+
+
+def _extract_skills_from_text(text: str, required_skills: List[str]) -> List[str]:
+    """
+    Job-role agnostic fallback: extract skills from raw resume text.
+    If required_skills are provided, check which ones appear in the text.
+    Otherwise, extract capitalized terms that look like tool/skill names.
+    """
+    if not text:
+        return []
+
+    # If we know what skills to look for, just scan the text for them
+    if required_skills:
+        text_lower = text.lower()
+        return [skill for skill in required_skills if skill.lower() in text_lower]
+
+    # No required_skills — extract capitalized terms as potential skills
+    # Matches things like "Selenium", "TestComplete", "AWS", "CI/CD", "Node.js"
+    matches = re.findall(r'\b[A-Z][a-zA-Z0-9+#./]*(?:\s[A-Z][a-zA-Z0-9+#./]*){0,2}\b', text)
+
+    # Filter out common non-skill words
+    stopwords = {
+        "With", "The", "This", "In", "At", "For", "And", "Or", "To", "Of", "By",
+        "On", "From", "Is", "Are", "Was", "Has", "Have", "Been", "When", "Where",
+        "Senior", "Junior", "Lead", "Principal", "Staff", "Head", "Chief",
+        "Manager", "Engineer", "Developer", "Designer", "Analyst", "Specialist",
+        "Bachelor", "Master", "Doctor", "University", "College", "Institute",
+        "Present", "Remote", "Onsite", "Hybrid", "Full", "Part", "Time",
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    }
+    return [m for m in dict.fromkeys(matches) if m not in stopwords][:20]
+
+
+def _get_full_text(parsed: dict) -> str:
+    """Extract full resume text from parsed_data structure."""
+    if not isinstance(parsed, dict):
+        return ""
+    text = parsed.get("full_text", "") or parsed.get("text", "")
+    if not text:
+        inner = parsed.get("parsed_data", {})
+        if isinstance(inner, dict):
+            text = inner.get("full_text", "") or inner.get("text", "")
+    return text or ""
+
+
+def _get_experience_years(parsed: dict):
+    """Extract total years of experience from parsed_data."""
+    if not isinstance(parsed, dict):
+        return None
+    years = parsed.get("years_of_experience") or parsed.get("experience_years") or parsed.get("total_experience_years")
+    if not years:
+        inner = parsed.get("parsed_data", {})
+        if isinstance(inner, dict):
+            years = inner.get("years_of_experience") or inner.get("experience_years") or inner.get("total_experience_years")
+    return years
+
+
+def _generate_basic_report(candidate: Candidate, required_skills: list) -> Dict[str, Any]:
+    """
+    Generate a basic report when ML service is not available.
+    Job-role agnostic — works for any domain (QA, engineering, design, finance, etc.)
+    """
+    parsed = candidate.parsed_data or {}
+    status = candidate.status.value if isinstance(candidate.status, CandidateStatus) else str(candidate.status)
+
+    # Step 1: Extract skills from structured parsed_data
+    candidate_skills = _extract_skills_from_parsed(parsed)
+
+    # Step 2: If no structured skills found, fall back to text extraction
+    if not candidate_skills:
+        full_text = _get_full_text(parsed)
+        candidate_skills = _extract_skills_from_text(full_text, required_skills)
+        if candidate_skills:
+            logger.info(f"Skills extracted from resume text for candidate {candidate.id}: {candidate_skills}")
+        else:
+            logger.warning(f"No skills could be extracted for candidate {candidate.id}")
+
+    # Step 3: Match against required skills
+    matched = []
+    missing = []
+    if required_skills and candidate_skills:
+        cand_lower = [s.lower() for s in candidate_skills]
+        matched = [s for s in required_skills if s.lower() in cand_lower]
+        missing = [s for s in required_skills if s.lower() not in cand_lower]
+    elif required_skills:
+        # No candidate skills found — check raw text as last resort
+        full_text = _get_full_text(parsed)
+        if full_text:
+            text_lower = full_text.lower()
+            matched = [s for s in required_skills if s.lower() in text_lower]
+            missing = [s for s in required_skills if s.lower() not in text_lower]
+        else:
+            missing = required_skills
+
+    # Step 4: Calculate match percentage
+    match_pct = (len(matched) / len(required_skills) * 100) if required_skills else 0.0
+
+    # Step 5: Estimate experience level
+    exp_level = "Unknown"
+    years = _get_experience_years(parsed)
+    if years:
+        try:
+            years = float(years)
+            if years < 2:
+                exp_level = "Entry Level"
+            elif years < 5:
+                exp_level = "Mid Level"
+            else:
+                exp_level = "Senior Level"
+        except (ValueError, TypeError):
+            years = None
+
+    # Step 6: Build recommendations
+    recommendations = []
+    if status == "pending":
+        recommendations.append("Resume is still being processed. Please check back in a moment.")
+    elif status == "processing":
+        recommendations.append("Resume is currently being analyzed by ML services.")
+    elif status == "failed":
+        recommendations.append("Resume processing failed. Please re-upload the file.")
+    elif required_skills:
+        recommendations.append(f"Candidate matches {len(matched)} of {len(required_skills)} required skills.")
+        if missing:
+            recommendations.append(f"Missing skills: {', '.join(missing[:5])}.")
+        if matched:
+            recommendations.append(f"Matched skills: {', '.join(matched[:5])}.")
+    else:
+        recommendations.append("No required skills specified. Add skills during upload for matching analysis.")
+
+    # Step 7: Next steps
+    next_steps = []
+    if not required_skills:
+        next_steps.append("Add required_skills during upload or via PUT /candidates/{id}/skills for skill matching.")
+    if not settings.ML_ENHANCE_SERVICE_URL:
+        next_steps.append("Configure ML_ENHANCE_SERVICE_URL for AI-generated detailed reports.")
+    if not next_steps:
+        next_steps.append("Review matched and missing skills above for hiring decision.")
+
+    return {
+        "overall_score": round(match_pct, 1),
+        "matched_skills": matched,
+        "missing_skills": missing,
+        "candidate_skills_found": candidate_skills[:20],
+        "recommendations": recommendations,
+        "explanation": (
+            f"Basic report for {candidate.name or 'candidate'}: "
+            f"{len(candidate_skills)} skills found, "
+            f"{len(matched)}/{len(required_skills)} required skills matched. "
+            f"Experience: {exp_level}{f' ({years:.0f} years)' if isinstance(years, float) else ''}."
+        ),
+        "skill_match_percentage": round(match_pct, 1),
+        "experience_level": exp_level,
+        "years_of_experience": years,
+        "processing_status": status,
+        "next_steps": next_steps,
+    }
 
 
 def _skill_match_contract(raw: Dict[str, float]) -> Dict[str, int]:
@@ -62,7 +267,7 @@ def _derive_skill_match(score_row: Optional[Score]) -> Dict[str, float]:
         score_row.breakdown if isinstance(score_row.breakdown, dict) else {}
     )
 
-    # Preferred shape from ML output.
+    # Preferred shape from ML output
     existing = breakdown.get("skill_match")
     if isinstance(existing, dict):
         normalized = {}
@@ -74,7 +279,7 @@ def _derive_skill_match(score_row: Optional[Score]) -> Dict[str, float]:
         if normalized:
             return normalized
 
-    # Fallback 1: derive from explicit matched/missing skills.
+    # Fallback 1: derive from explicit matched/missing skills
     matched = breakdown.get("matched_skills")
     missing = breakdown.get("missing_skills")
     if isinstance(matched, list):
@@ -91,7 +296,7 @@ def _derive_skill_match(score_row: Optional[Score]) -> Dict[str, float]:
         if derived:
             return derived
 
-    # Fallback 2: derive from score components.
+    # Fallback 2: derive from score components
     mapping = {
         "skill": getattr(score_row, "skill_score", None),
         "experience": getattr(score_row, "experience_score", None),
@@ -108,11 +313,10 @@ def _derive_recommendations(feedback: Optional[Feedback], improvements: List[str
     text = (feedback.feedback_text or "").strip() if feedback else ""
     if text:
         return text
-
     if improvements:
         return "Consider improving: " + "; ".join(improvements[:3])
-
     return "No additional recommendations available yet."
+
 
 class CandidateCreateRequest(BaseModel):
     name: Optional[str] = None
@@ -122,7 +326,6 @@ class CandidateCreateRequest(BaseModel):
 
 
 def normalize_file_path(file_id: str) -> str:
-    # Accept either a raw storage path, a bucket-relative path, or a Supabase storage URL.
     if file_id.startswith("http://") or file_id.startswith("https://"):
         parsed = urlparse(file_id)
         path = unquote(parsed.path)
@@ -130,10 +333,8 @@ def normalize_file_path(file_id: str) -> str:
         if marker in path:
             return path.split(marker, 1)[1]
         return path.split("/")[-1]
-
     if file_id.startswith(f"{settings.STORAGE_BUCKET_NAME}/"):
-        return file_id[len(settings.STORAGE_BUCKET_NAME) + 1 :]
-
+        return file_id[len(settings.STORAGE_BUCKET_NAME) + 1:]
     return file_id
 
 
@@ -143,15 +344,15 @@ def build_candidate_paths(file_reference: str) -> list[str]:
     candidates = [normalized]
 
     if normalized.startswith(f"{bucket}/"):
-        candidates.append(normalized[len(bucket) + 1 :])
+        candidates.append(normalized[len(bucket) + 1:])
         candidates.append(f"{bucket}/{normalized}")
     else:
         candidates.append(f"{bucket}/{normalized}")
         candidates.append(f"{bucket}/{bucket}/{normalized}")
 
     if normalized.startswith(f"{bucket}/{bucket}/"):
-        candidates.append(normalized[len(bucket) + 1 :])
-        candidates.append(normalized[len(bucket) * 2 + 2 :])
+        candidates.append(normalized[len(bucket) + 1:])
+        candidates.append(normalized[len(bucket) * 2 + 2:])
         candidates.append(f"{bucket}/{normalized}")
 
     if "/" in normalized:
@@ -160,7 +361,6 @@ def build_candidate_paths(file_reference: str) -> list[str]:
             candidates.append("/".join(parts[1:]))
             candidates.append("/".join(parts[2:]))
 
-    # Preserve ordering and uniqueness
     seen = set()
     final = []
     for path in candidates:
@@ -227,6 +427,7 @@ async def create_candidate(
         logger.error(f"Candidate creation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Candidate creation failed: {str(e)}")
 
+
 @router.get("")
 async def list_candidates(
     skip: int = Query(0, ge=0),
@@ -238,7 +439,7 @@ async def list_candidates(
     query = db.query(Candidate)
     if status:
         query = query.filter(Candidate.status == status)
-    
+
     candidates = query.offset(skip).limit(limit).all()
 
     return [
@@ -251,6 +452,7 @@ async def list_candidates(
         }
         for c in candidates
     ]
+
 
 @router.post("/{candidate_id}/process")
 async def process_candidate(
@@ -266,7 +468,6 @@ async def process_candidate(
     if not candidate.file_url:
         raise HTTPException(status_code=400, detail="Candidate has no file_url")
 
-    # Mark processing immediately so polling reflects the change.
     candidate.status = CandidateStatus.PROCESSING
     candidate.error_message = None
     db.commit()
@@ -372,11 +573,10 @@ async def get_candidate_report(
     db: Session = Depends(get_db),
 ):
     """Get detailed candidate report from ML service.
-    
-    This endpoint retrieves the stored parsed_data and required_skills,
-    then calls the ML service's POST /candidate-report endpoint to generate
-    a comprehensive report with scores, matched/missing skills, and recommendations.
-    
+
+    Tries ML service first if ML_ENHANCE_SERVICE_URL is configured.
+    Falls back to basic job-role agnostic report if ML service is unavailable.
+
     Returns:
         - overall_score: Overall matching score (0-100)
         - matched_skills: List of skills matched from resume
@@ -388,45 +588,56 @@ async def get_candidate_report(
         - next_steps: Recommended next steps
     """
     from app.services.ml_client import ml_client
-    
+
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    
-    # Check if we have parsed data
+
     if not candidate.parsed_data:
         raise HTTPException(
             status_code=400,
             detail="Candidate data not yet processed. Please wait for processing to complete."
         )
-    
-    # Get required skills (default to empty list if not provided)
+
     required_skills = candidate.required_skills or []
     job_role = candidate.job_role or "Not specified"
-    
-    try:
-        # Call ML service to generate comprehensive report
-        report = await ml_client.candidate_report(
-            parsed_data=candidate.parsed_data,
-            required_skills=required_skills,
-            job_role=job_role
-        )
-        
-        return {
-            "candidate_id": candidate_id,
-            "application_id": candidate.application_id,
-            "name": candidate.name,
-            "email": candidate.email,
-            "job_role": job_role,
-            "report": report,
-            "generated_at": _iso_z(datetime.now(timezone.utc))
-        }
-    except Exception as e:
-        logger.error(f"Failed to generate candidate report: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate report: {str(e)}"
-        )
+
+    report = None
+    ml_service_error = None
+
+    # Try ML service first if configured
+    if settings.ML_ENHANCE_SERVICE_URL:
+        try:
+            report = await ml_client.candidate_report(
+                parsed_data=candidate.parsed_data,
+                required_skills=required_skills,
+                job_role=job_role
+            )
+            logger.info(f"ML report generated successfully for candidate {candidate_id}")
+        except Exception as e:
+            ml_service_error = str(e)
+            logger.warning(
+                f"ML service failed for candidate {candidate_id}: {ml_service_error}. "
+                f"Falling back to basic report."
+            )
+    else:
+        logger.warning(f"ML_ENHANCE_SERVICE_URL not configured, using basic report for candidate {candidate_id}")
+
+    # Fall back to basic report if ML service failed or not configured
+    if report is None:
+        report = _generate_basic_report(candidate, required_skills)
+        if ml_service_error:
+            report["ml_service_error"] = "ML service unavailable, showing basic report"
+
+    return {
+        "candidate_id": candidate_id,
+        "application_id": candidate.application_id,
+        "name": candidate.name,
+        "email": candidate.email,
+        "job_role": job_role,
+        "report": report,
+        "generated_at": _iso_z(datetime.now(timezone.utc)),
+    }
 
 
 @router.get("/{candidate_id}")
@@ -438,7 +649,7 @@ async def get_candidate(
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    
+
     return {
         "id": candidate.id,
         "name": candidate.name,
@@ -468,11 +679,11 @@ async def update_candidate_skills(
     db: Session = Depends(get_db)
 ):
     """Update required skills for a candidate
-    
+
     Args:
         candidate_id: The candidate ID
         required_skills: List of skills to match against the resume
-    
+
     Example:
         PUT /candidates/{id}/skills
         {
@@ -482,18 +693,18 @@ async def update_candidate_skills(
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    
-    # Update required skills
+
     candidate.required_skills = request.required_skills
     db.commit()
     db.refresh(candidate)
-    
+
     return {
         "success": True,
         "candidate_id": candidate.id,
         "required_skills": candidate.required_skills,
-        "message": f"Updated {len(request.required_skills)} skills"
+        "message": f"Updated {len(request.required_skills)} skills",
     }
+
 
 @router.delete("/{candidate_id}")
 async def delete_candidate(
@@ -504,12 +715,11 @@ async def delete_candidate(
     candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
-    
-    # Optionally delete file from storage here (implement if needed)
+
     db.delete(candidate)
     db.commit()
-    
+
     return {
         "success": True,
-        "message": f"Candidate {candidate_id} deleted successfully"
+        "message": f"Candidate {candidate_id} deleted successfully",
     }
