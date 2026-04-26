@@ -45,7 +45,6 @@ if not firebase_admin._apps:
         except Exception as e:
             print(f"⚠️ Failed to initialize Firebase from file: {e}")
     
-    # Warning if Firebase is not initialized
     if not firebase_initialized:
         print("⚠️ WARNING: Firebase not initialized. Auth endpoints will fail.")
         print("   Set FIREBASE_KEY (JSON string) or FIREBASE_SERVICE_ACCOUNT_KEY_PATH (file path)")
@@ -63,7 +62,7 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Middlewares - CORS MUST be added first (last in execution order)
+# Middlewares
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -78,15 +77,11 @@ app.add_middleware(
         "Access-Control-Request-Headers",
         "*"
     ],
-    max_age=86400,  # 24 hours
+    max_age=86400,
     expose_headers=["Content-Length", "Content-Range"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 app.add_middleware(RequestLoggerMiddleware)
-
-# Add rate limiter (100 requests per minute per IP) - TEMPORARILY DISABLED
-# from app.middlewares.rate_limiter import RateLimiterMiddleware
-# app.add_middleware(RateLimiterMiddleware, requests_per_minute=100)
 
 # Exception handlers
 add_exception_handlers(app)
@@ -99,21 +94,48 @@ try:
 except Exception as e:
     print(f"⚠️ Warning: Could not mount static files: {e}")
 
-# Include API router (only once, prefix /api/v1)
+# Include API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Graceful shutdown handler
+
+@app.on_event("startup")
+async def startup_event():
+    """Handle startup - log configuration status"""
+    try:
+        logger.info("🚀 Starting up server...")
+        
+        logger.info(f"Environment: {settings.ENVIRONMENT}")
+        logger.info(f"Database URL configured: {bool(settings.DATABASE_URL)}")
+        logger.info(f"Supabase URL configured: {bool(settings.SUPABASE_URL)}")
+        logger.info(f"Supabase service key configured: {bool(settings.SUPABASE_SERVICE_KEY)}")
+        logger.info(f"ML service URL configured: {bool(settings.ML_PARSING_SERVICE_URL)}")
+        
+        try:
+            from app.services.storage_service import get_storage_service
+            get_storage_service()
+            logger.info("✅ StorageService initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ StorageService not available: {e}")
+        
+        try:
+            from app.services.ml_client import get_ml_client
+            get_ml_client()
+            logger.info("✅ MLClient initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ MLClient not available: {e}")
+        
+        logger.info("✅ Application startup complete")
+    except Exception as e:
+        logger.error(f"❌ CRITICAL ERROR DURING STARTUP: {str(e)}", exc_info=True)
+        raise
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Handle graceful shutdown"""
     logger.info("⏹️ Shutting down server...")
-    # Cancel any pending background tasks (except current)
-    import asyncio
-    current_task = asyncio.current_task()
-    for task in asyncio.all_tasks():
-        if task is not current_task and not task.done():
-            task.cancel()
     logger.info("✅ Shutdown complete")
+
 
 @app.get("/")
 async def root():
@@ -123,6 +145,7 @@ async def root():
         "docs": "/docs"
     }
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Cloud Run - lightweight and fast"""
@@ -131,11 +154,11 @@ async def health_check():
         "version": settings.VERSION
     }
 
+
 @app.get("/ready")
 async def readiness_check():
-    """Readiness check for Cloud Run - passes if basic services are ready"""
+    """Readiness check for Cloud Run"""
     try:
-        # Check database if configured
         if settings.DATABASE_URL:
             from app.core.database import SessionLocal, get_engine
             db_engine = get_engine()
@@ -150,7 +173,6 @@ async def readiness_check():
             db.close()
             return {"status": "ready", "database": "connected"}
         else:
-            # Database optional - still ready if other services are configured
             return {"status": "ready", "database": "not configured (optional)"}
     except Exception as e:
         logger.warning(f"Readiness check failed: {e}")
@@ -158,6 +180,7 @@ async def readiness_check():
             status_code=503,
             content={"status": "not ready", "reason": str(e)}
         )
+
 
 @app.get("/redoc", include_in_schema=False)
 async def custom_redoc_html():
