@@ -9,7 +9,7 @@ from app.services.storage_service import storage_service
 logger = logging.getLogger(__name__)
 
 # Single base URL — all ML endpoints are on the same service
-ML_BASE_URL = settings.ML_PARSING_SERVICE_URL  # e.g. https://preeee-276-ml-service-api.hf.space
+ML_BASE_URL = settings.ML_PARSING_SERVICE_URL or ""  # e.g. https://preeee-276-ml-service-api.hf.space
 
 
 def _build_parsed_resume(parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,10 +128,22 @@ def _get_raw_text(parsed_data: Dict[str, Any]) -> Optional[str]:
 
 class MLClient:
     def __init__(self):
-        self.base_url = ML_BASE_URL.rstrip("/")
-        self.client = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)
-        )
+        self._base_url = ML_BASE_URL.rstrip("/") if ML_BASE_URL else None
+        self._client = None
+
+    @property
+    def base_url(self) -> str:
+        if not self._base_url:
+            raise RuntimeError("ML service URL not configured. Set ML_PARSING_SERVICE_URL env var.")
+        return self._base_url
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=5.0)
+            )
+        return self._client
 
     # ──────────────────────────────────────────────
     # POST /parse   (multipart/form-data)
@@ -531,7 +543,8 @@ class MLClient:
 
     async def close(self):
         """Close the HTTP client gracefully."""
-        await self.client.aclose()
+        if self._client:
+            await self._client.aclose()
 
 
 def _years_to_level(years: float) -> str:
@@ -543,5 +556,21 @@ def _years_to_level(years: float) -> str:
         return "Senior Level"
 
 
-# Singleton instance
-ml_client = MLClient()
+# Singleton instance - lazy initialization at module level
+_ml_client_instance = None
+
+def get_ml_client() -> MLClient:
+    """Get or create MLClient instance (lazy initialization)"""
+    global _ml_client_instance
+    if _ml_client_instance is None:
+        _ml_client_instance = MLClient()
+    return _ml_client_instance
+
+# Backward compatibility - lazy wrapper
+class _LazyMLClient:
+    """Lazy wrapper that defers MLClient creation until first use"""
+    def __getattr__(self, name: str):
+        client = get_ml_client()
+        return getattr(client, name)
+
+ml_client = _LazyMLClient()

@@ -1,6 +1,6 @@
 from app.core.config import settings
 from supabase import create_client
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 import uuid
 import logging
@@ -133,5 +133,21 @@ class StorageService:
             logger.error(f"Failed to delete file: {str(e)}")
             raise
 
-# Create instance
-storage_service = StorageService()
+# Lazy singleton instance - initialized on first access to defer errors to runtime
+_storage_service_instance: Optional[StorageService] = None
+
+def get_storage_service() -> StorageService:
+    """Get or create StorageService instance (lazy initialization)"""
+    global _storage_service_instance
+    if _storage_service_instance is None:
+        _storage_service_instance = StorageService()
+    return _storage_service_instance
+
+# Backward compatibility - lazy property that calls get_storage_service
+class _LazyStorageService:
+    """Lazy wrapper that defers StorageService creation until first attribute access"""
+    def __getattr__(self, name: str):
+        service = get_storage_service()
+        return getattr(service, name)
+
+storage_service = _LazyStorageService()
