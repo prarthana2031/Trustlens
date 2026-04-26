@@ -141,6 +141,10 @@ def _generate_basic_report(candidate: Candidate, required_skills: list) -> Dict[
     """
     Generate a basic report when ML service is not available.
     Job-role agnostic — works for any domain (QA, engineering, design, finance, etc.)
+    
+    Args:
+        candidate: The candidate model
+        required_skills: List of required skills for matching
     """
     parsed = candidate.parsed_data or {}
     status = candidate.status.value if isinstance(candidate.status, CandidateStatus) else str(candidate.status)
@@ -174,7 +178,8 @@ def _generate_basic_report(candidate: Candidate, required_skills: list) -> Dict[
         else:
             missing = required_skills
 
-    # Step 4: Calculate match percentage
+    # Step 4: Calculate skill match percentage (NOT the pretrained score)
+    # This is the % of required skills that were found in the resume
     match_pct = (len(matched) / len(required_skills) * 100) if required_skills else 0.0
 
     # Step 5: Estimate experience level
@@ -628,6 +633,9 @@ async def get_candidate_report(
         report = _generate_basic_report(candidate, required_skills)
         if ml_service_error:
             report["ml_service_error"] = "ML service unavailable, showing basic report"
+    # Note: We intentionally do NOT overwrite report.overall_score with the pretrained score.
+    # report.overall_score should be skill match % (100% when all skills match)
+    # The pretrained score (47.16) is only shown in /status endpoint
 
     return {
         "candidate_id": candidate_id,
