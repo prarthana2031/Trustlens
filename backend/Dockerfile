@@ -33,3 +33,8 @@ ENV PYTHONUNBUFFERED=1
 
 # Cloud Run injects $PORT (usually 8080), so we use that variable
 CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --proxy-headers --timeout-keep-alive 65
+
+# Health check - lightweight, doesn't depend on database
+# Initial delay: 10 seconds, interval: 5 seconds, timeout: 3 seconds, retries: 3
+HEALTHCHECK --start-period=10s --interval=5s --timeout=3s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1

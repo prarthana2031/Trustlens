@@ -137,12 +137,14 @@ async def readiness_check():
     try:
         # Check database if configured
         if settings.DATABASE_URL:
-            from app.core.database import SessionLocal, engine
-            if engine is None:
+            from app.core.database import SessionLocal, get_engine
+            db_engine = get_engine()
+            if db_engine is None:
                 return JSONResponse(
                     status_code=503,
                     content={"status": "not ready", "reason": "database engine failed to initialize"}
                 )
+            SessionLocal.configure(bind=db_engine)
             db = SessionLocal()
             db.execute(text("SELECT 1"))
             db.close()
