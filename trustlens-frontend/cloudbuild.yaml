@@ -4,7 +4,7 @@ steps:
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'cd trustlens-frontend && npm ci && npm run lint || true'   # replace || true with actual failure when you have lint script
+      - 'npm ci && npm run lint || true'   # replace || true with actual failure when you have lint script
 
   # 1. Build Docker image
   - name: 'gcr.io/cloud-builders/docker'
