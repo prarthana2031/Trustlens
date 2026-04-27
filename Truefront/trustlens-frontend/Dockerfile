@@ -6,13 +6,13 @@ WORKDIR /app
 # Copy dependency files
 COPY package*.json ./
 
-# Clean install
+# Install dependencies
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# CRITICAL: Fix executable permissions for npm scripts
+# Fix executable permissions (prevents Error 126)
 RUN chmod -R +x node_modules/.bin
 
 # Build arguments
@@ -22,17 +22,36 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 # Build the application
 RUN npm run build
 
+# Debug: List built files
+RUN echo "=== Built files ===" && ls -la dist/ && ls -la dist/assets/ || true
+
 # Stage 2: Production
 FROM nginx:alpine
 
-# Copy custom config
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy built files
+# Remove default nginx config to avoid conflicts
+RUN rm -f /etc/nginx/conf.d/default.conf.bak 2>/dev/null || true
+
+# Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Expose port
+# Debug: Verify files were copied
+RUN echo "=== Files in nginx html directory ===" && ls -la /usr/share/nginx/html/ && ls -la /usr/share/nginx/html/assets/ || true
+
+# Create a fallback health check file
+RUN echo "healthy" > /usr/share/nginx/html/health.txt
+
+# Expose port 8080 (Cloud Run requirement)
 EXPOSE 8080
+
+# Health check for Cloud Run
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
