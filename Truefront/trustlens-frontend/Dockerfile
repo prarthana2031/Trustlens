@@ -17,7 +17,7 @@ ARG VITE_API_BASE_URL
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build the application - using vite directly to avoid TypeScript issues
-RUN npx vite build
+RUN ./node_modules/.bin/vite build
 
 # Production stage
 FROM nginx:alpine
