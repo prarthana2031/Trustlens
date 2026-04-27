@@ -32,6 +32,18 @@ export function CandidateStatusBadge({ status, className }: CandidateStatusBadge
       textColor: 'text-red-800',
       dotColor: 'bg-red-400',
     },
+    recommended: {
+      label: 'Recommended',
+      bgColor: 'bg-purple-100',
+      textColor: 'text-purple-800',
+      dotColor: 'bg-purple-400',
+    },
+    under_review: {
+      label: 'Under Review',
+      bgColor: 'bg-yellow-100',
+      textColor: 'text-yellow-800',
+      dotColor: 'bg-yellow-400',
+    },
   }
 
   const config = statusConfig[status]

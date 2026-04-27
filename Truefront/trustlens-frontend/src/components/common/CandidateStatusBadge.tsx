@@ -36,6 +36,20 @@ export function CandidateStatusBadge({ status, className }: CandidateStatusBadge
       borderColor: 'border-error',
       dotColor: 'bg-error',
     },
+    recommended: {
+      label: 'Recommended',
+      bgColor: 'bg-tertiary-fixed',
+      textColor: 'text-tertiary',
+      borderColor: 'border-tertiary',
+      dotColor: 'bg-tertiary',
+    },
+    under_review: {
+      label: 'Under Review',
+      bgColor: 'bg-surface-variant',
+      textColor: 'text-on-surface-variant',
+      borderColor: 'border-outline',
+      dotColor: 'bg-on-surface-variant',
+    },
   }
 
   const config = statusConfig[status] || {

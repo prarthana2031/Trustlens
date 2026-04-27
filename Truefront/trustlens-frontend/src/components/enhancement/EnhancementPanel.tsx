@@ -17,7 +17,7 @@ export function EnhancementPanel({ candidateId, originalScore, onEnhanced }: Enh
   const handleEnhance = async () => {
     setIsEnhancing(true)
     try {
-      const result = await enhanceScore.mutateAsync(candidateId)
+      const result = await enhanceScore.mutateAsync({ candidateId })
       onEnhanced(result)
       toast.success('Score enhanced with AI analysis')
     } catch (error) {

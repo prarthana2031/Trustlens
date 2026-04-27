@@ -1,4 +1,4 @@
-export type ScoreVersion = 'original' | 'enhanced'
+export type ScoreVersion = 'original' | 'enhanced' | 'fairness_adjusted'
 
 export interface SkillScore {
   skill: string

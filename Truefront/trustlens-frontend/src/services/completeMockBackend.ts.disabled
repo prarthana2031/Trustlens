@@ -3,7 +3,6 @@ import {
   Candidate,
   CandidateListResponse,
   CandidateDetail,
-  ProcessCandidateResponse,
 } from '../types/candidate'
 import { BiasMetricsResponse } from '../types/bias'
 import { CandidateStatusWithScore } from '../types/score'
@@ -17,17 +16,14 @@ const mockCandidateDetails = new Map<string, CandidateDetail>()
 const initializeMockData = () => {
   const mockCandidatesList: Candidate[] = [
     {
-      candidate_id: 'cand_1',
+      id: 'cand_1',
       name: 'John Doe',
       email: 'john@example.com',
       job_role: 'Software Engineer',
       skills: ['JavaScript', 'React', 'Node.js'],
-      original_score: 85,
-      enhanced_score: 87,
-      fairness_adjusted_score: 88,
       status: 'recommended',
-      resume_url: 'https://example.com/resume1.pdf',
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     },
     {
       candidate_id: 'cand_2',

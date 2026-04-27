@@ -51,11 +51,11 @@ export function BiasMetricsChart({ metrics }: BiasMetricsChartProps) {
           <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11 }} />
           <Tooltip
             contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-            formatter={(value: number, name: string) => [
-              value.toFixed(3),
+            formatter={(value: any, name: any) => [
+              typeof value === 'number' ? value.toFixed(3) : value,
               name === 'value' ? 'Metric Value' : 'Threshold',
             ]}
-            labelFormatter={(_label: string, payload: any) => {
+            labelFormatter={(_label: any, payload: any) => {
               if (payload?.[0]?.payload) {
                 const d = payload[0].payload
                 return `${d.category} - ${d.fullName}`

@@ -85,8 +85,8 @@ export const FairnessReport: React.FC<FairnessReportProps> = ({ report }) => {
             <YAxis type="category" dataKey="group" width={100} tick={{ fontSize: 11 }} />
             <Tooltip
               contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
-              formatter={(value: number) => [value.toFixed(3), 'Equity Score']}
-              labelFormatter={(label: string, payload: any) => {
+              formatter={(value: any) => [typeof value === 'number' ? value.toFixed(3) : value, 'Equity Score']}
+              labelFormatter={(label: any, payload: any) => {
                 if (payload?.[0]?.payload) {
                   return `${payload[0].payload.category} - ${label}`
                 }
@@ -114,7 +114,7 @@ export const FairnessReport: React.FC<FairnessReportProps> = ({ report }) => {
                 cy="50%"
                 outerRadius={80}
                 dataKey="value"
-                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
                 labelLine={{ stroke: '#9ca3af' }}
               >
                 {pieData.map((_, index) => (

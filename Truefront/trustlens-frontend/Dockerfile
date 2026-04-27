@@ -15,8 +15,8 @@ RUN npm ci
 COPY . .
 
 # Set build arguments and env variables BEFORE the build
-ARG REACT_APP_API_BASE_URL
-ENV VITE_API_BASE_URL=$REACT_APP_API_BASE_URL
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build the app once. 
 # We removed the redundant chmod and double-build commands.

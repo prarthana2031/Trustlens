@@ -19,10 +19,23 @@ export default function CandidateDetailPage() {
   const { user, loading: authLoading } = useAuth()
   const [enhancedScore, setEnhancedScore] = useState<ScoreResponse | undefined>(undefined)
   
-  const { data: candidate, isLoading: candidateLoading } = useCandidate(id || '')
+  const { data: candidate, isLoading: candidateLoading, error: candidateError } = useCandidate(id || '')
   const { data: status } = useCandidateStatus(id || '')
   const { data: originalScore } = useScore(id || '', 'original')
+  const { data: enhancedScoreData } = useScore(id || '', 'enhanced')
   const { data: biasMetrics } = useBiasMetrics(id || '', 'original')
+
+  // Debug logging
+  console.log('CandidateDetailPage Debug:', {
+    id,
+    candidate,
+    candidateLoading,
+    candidateError,
+    status,
+    originalScore,
+    enhancedScoreData,
+    biasMetrics
+  })
   const processCandidate = useProcessCandidate()
   const deleteCandidate = useDeleteCandidate()
 
@@ -55,22 +68,7 @@ export default function CandidateDetailPage() {
     setEnhancedScore(score)
   }
 
-  const handleEnhanceClick = async () => {
-    try {
-      await enhanceScore.mutateAsync({
-        candidateId: id,
-        candidateData: {
-          skills: candidate.skills,
-          job_role: candidate.job_role,
-          name: candidate.name,
-          email: candidate.email
-        }
-      })
-    } catch (error) {
-      console.error('Enhancement failed:', error)
-    }
-  }
-
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -111,8 +109,17 @@ export default function CandidateDetailPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-64 w-full" />
           </div>
+        ) : candidateError ? (
+          <div className="text-center py-12">
+            <div className="text-red-500 mb-4">Error loading candidate</div>
+            <div className="text-gray-500 text-sm">{candidateError.message}</div>
+            <div className="text-gray-400 text-xs mt-2">ID: {id}</div>
+          </div>
         ) : !candidate ? (
-          <div className="text-center py-12 text-gray-500">Candidate not found</div>
+          <div className="text-center py-12">
+            <div className="text-gray-500 mb-4">Candidate not found</div>
+            <div className="text-gray-400 text-sm">ID: {id}</div>
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Candidate Info */}
@@ -141,8 +148,8 @@ export default function CandidateDetailPage() {
                         skillsToShow = originalScore.breakdown.skills.map(skill => skill.skill || 'Unknown Skill')
                       }
                       // Fallback to enhanced score skills
-                      else if (enhancedScore?.breakdown?.skills && enhancedScore.breakdown.skills.length > 0) {
-                        skillsToShow = enhancedScore.breakdown.skills.map(skill => skill.skill || 'Unknown Skill')
+                      else if (enhancedScoreData?.breakdown?.skills && enhancedScoreData.breakdown.skills.length > 0) {
+                        skillsToShow = enhancedScoreData.breakdown.skills.map(skill => skill.skill || 'Unknown Skill')
                       }
                       
                       return skillsToShow.length > 0 ? (

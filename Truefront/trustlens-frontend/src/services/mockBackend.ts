@@ -13,7 +13,7 @@ const sessions = new Map<string, any>()
 const generateSessionId = () => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
 const mockScreeningResults = (request: ScreeningRequest): ScreeningResult[] => {
-  return request.resumes.map((candidate, index) => ({
+  return request.resumes.map((candidate) => ({
     candidate_id: candidate.candidate_id,
     name: candidate.name,
     email: candidate.email,
@@ -57,7 +57,7 @@ export const mockBackendService = {
       throw new Error(`Session ${sessionId} not found`)
     }
 
-    const { session, results } = sessionData
+    const { results } = sessionData
     const summary = {
       total_candidates: results.length,
       recommended_count: results.filter((r: ScreeningResult) => r.recommended).length,

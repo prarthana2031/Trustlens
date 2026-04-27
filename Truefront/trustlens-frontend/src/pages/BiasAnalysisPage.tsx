@@ -180,7 +180,7 @@ export default function BiasAnalysisPage() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                           <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                           <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
-                          <Tooltip formatter={(value: number) => [value.toFixed(1), 'Avg Score']} />
+                          <Tooltip formatter={(value: any) => [typeof value === 'number' ? value.toFixed(1) : value, 'Avg Score']} />
                           <Bar dataKey="score" radius={[4, 4, 0, 0]} barSize={20}>
                             {Object.entries(breakdown.groups).map((_, index) => (
                               <Cell key={index} fill={BAR_COLORS[index % BAR_COLORS.length]} />

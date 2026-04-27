@@ -1,4 +1,4 @@
-export type CandidateStatus = 'pending' | 'processing' | 'completed' | 'error'
+export type CandidateStatus = 'pending' | 'processing' | 'completed' | 'error' | 'recommended' | 'under_review'
 
 export interface Candidate {
   id: string
