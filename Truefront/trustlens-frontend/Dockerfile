@@ -1,23 +1,25 @@
 # Stage 1: Build the frontend
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy dependency files first for caching
 COPY package*.json ./
-RUN npm install
 
-# Copy all source code
+# Use 'ci' to clean install dependencies. 
+# This is crucial to fix your #module-sync-enabled error, 
+# as it ensures a pristine node_modules folder.
+RUN npm ci
+
+# Copy the rest of the source code
 COPY . .
 
-# Fix permissions and build
-RUN chmod -R +x node_modules/.bin && \
-    npm run build
-
-# Build the app using Vite (since your project has vite.config.ts)
-# The build argument REACT_APP_API_BASE_URL will be replaced at build time
+# Set build arguments and env variables BEFORE the build
 ARG REACT_APP_API_BASE_URL
 ENV VITE_API_BASE_URL=$REACT_APP_API_BASE_URL
+
+# Build the app once. 
+# We removed the redundant chmod and double-build commands.
 RUN npm run build
 
 # Stage 2: Serve with Nginx
@@ -26,10 +28,9 @@ FROM nginx:stable-alpine
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy built files from previous stage
+# Copy built files from the build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Expose port 80
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
