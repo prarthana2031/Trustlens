@@ -28,7 +28,7 @@ export const candidateService = {
         }
         return data
       } catch (apiError) {
-        console.warn('[Candidates] Real API failed, using mock data:', apiError)
+        console.debug('[Candidates] Real API not available, using mock data')
         
         // Fallback to mock data with some sample candidates
         const mockCandidates: Candidate[] = [
@@ -124,7 +124,7 @@ export const candidateService = {
         console.log(`[Candidates] Real status response:`, response.data)
         return response.data
       } catch (apiError) {
-        console.warn(`[Candidates] Real API failed, using mock data:`, apiError)
+        console.debug(`[Candidates] Real API not available, using mock data`)
         
         // Fallback to mock data for consistent experience
         const mockStatus: CandidateStatusWithScore = {
@@ -264,7 +264,7 @@ export const candidateService = {
         console.log(`[Candidates] Real process response:`, response.data)
         return response.data
       } catch (apiError) {
-        console.warn(`[Candidates] Real API failed, using mock data:`, apiError)
+        console.debug(`[Candidates] Real API not available, using mock data`)
         
         // Fallback to mock data for demonstration
         const { createMockProcessedCandidate } = await import('./tempMockProcessing')

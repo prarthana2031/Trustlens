@@ -15,7 +15,7 @@ export const scoringService = {
         console.log(`[Scoring] Real score response:`, response.data)
         return response.data
       } catch (apiError) {
-        console.warn(`[Scoring] Real API failed, using mock data:`, apiError)
+        console.debug(`[Scoring] Real API not available, using mock data`)
         
         // Fallback to mock data for demonstration
         const mockScore: ScoreResponse = {
@@ -60,7 +60,7 @@ export const scoringService = {
         console.log(`[Scoring] Real enhancement response:`, response.data)
         return response.data
       } catch (apiError) {
-        console.warn(`[Scoring] Real API failed, using mock data:`, apiError)
+        console.debug(`[Scoring] Real API not available, using mock data`)
         
         // Fallback to mock data for demonstration
         const { createMockEnhancedScore } = await import('./tempMockEnhancement')

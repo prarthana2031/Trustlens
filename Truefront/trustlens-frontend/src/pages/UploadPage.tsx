@@ -115,7 +115,7 @@ export default function UploadPage() {
         toast.success(`${uploadedCandidate.name} uploaded successfully!`)
         
         // Redirect to screening with the uploaded candidate ID
-        const candidateId = uploadedCandidate.id || uploadedCandidate.candidate_id
+        const candidateId = uploadedCandidate.id
         console.log('[Upload] Candidate uploaded, redirecting to screening with ID:', candidateId)
         setTimeout(() => navigate(`/screening?candidates=${candidateId}`), 1000)
       }

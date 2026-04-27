@@ -1,16 +1,16 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { getAuthToken } from './firebaseConfig'
 
-// Use proxy in development, full URL in production
-const API_BASE_URL = import.meta.env.DEV ? '/api' : 
-  (import.meta.env.VITE_API_BASE_URL ? 
-    `${import.meta.env.VITE_API_BASE_URL}/api/v1` : 
-    'https://resume-backend-948277799081.us-central1.run.app/api/v1')
+// Use environment variable or default to deployed backend
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://resume-backend-948277799081.us-central1.run.app'
 
-console.log('[API] Base URL:', API_BASE_URL)
+console.log('[API] === CONFIG v3.0 ===')
+console.log('[API] Environment:', import.meta.env.MODE)
+console.log('[API] Base URL:', `${API_BASE_URL}/api/v1`)
+console.log('[API] Timestamp:', new Date().toISOString())
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api/v1`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -49,11 +49,18 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const responseData = error.response?.data as any
     const errorMessage = responseData?.detail || error.message || 'Unknown error'
-    console.error('[API] Response error:', {
+    const isError = error.response?.status && error.response.status >= 500
+    const logMessage = '[API] Response error:'
+    const logData = {
       status: error.response?.status,
       url: error.config?.url,
       message: errorMessage,
-    })
+    }
+    if (isError) {
+      console.error(logMessage, logData)
+    } else {
+      console.debug(logMessage, logData)
+    }
 
     if (error.response?.status === 401) {
       // Token expired, try to refresh

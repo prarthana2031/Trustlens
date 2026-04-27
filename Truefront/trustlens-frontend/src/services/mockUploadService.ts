@@ -99,7 +99,7 @@ export const isBackendAvailable = async (): Promise<boolean> => {
     clearTimeout(timeoutId)
     return response.ok || response.status === 405 // 405 Method Not Allowed means endpoint exists
   } catch (error) {
-    console.warn('[Backend] Upload endpoint check failed:', error)
+    console.debug('[Backend] Upload endpoint not available')
     return false
   }
 }
