@@ -9,11 +9,11 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --legacy-peer-deps
 
-# Fix executable permissions for npm scripts (Solves Error 126)
-RUN chmod -R +x node_modules/.bin
-
 # Copy source code
 COPY . .
+
+# Fix executable permissions for npm scripts (Solves Error 126)
+RUN chmod -R +x node_modules/.bin
 
 # Build arguments
 ARG VITE_API_BASE_URL
