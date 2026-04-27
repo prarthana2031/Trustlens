@@ -36,9 +36,9 @@ export default function ScreeningPage() {
     }
 
     const selectedCandidateData = candidates?.candidates
-      .filter(c => selectedCandidates.includes(c.id))
+      .filter(c => c.id && selectedCandidates.includes(c.id))
       .map(c => ({
-        candidate_id: c.id,
+        candidate_id: c.id as string,
         name: c.name,
         email: c.email,
         skills: c.skills,
@@ -149,14 +149,14 @@ export default function ScreeningPage() {
                   Select Candidates ({selectedCandidates.length} selected)
                 </label>
                 <div className="max-h-64 overflow-y-auto border border-gray-300 rounded-lg p-4">
-                  {candidates?.candidates.map((candidate) => (
+                  {candidates?.candidates.filter(c => c.id).map((candidate) => (
                     <label key={candidate.id} className="flex items-center gap-2 py-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={selectedCandidates.includes(candidate.id)}
+                        checked={selectedCandidates.includes(candidate.id as string)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedCandidates([...selectedCandidates, candidate.id])
+                            setSelectedCandidates([...selectedCandidates, candidate.id as string])
                           } else {
                             setSelectedCandidates(selectedCandidates.filter(id => id !== candidate.id))
                           }

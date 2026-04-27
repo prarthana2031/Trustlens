@@ -46,10 +46,10 @@ export const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
       </div>
       <div className="mt-md flex items-center justify-between">
         <div className="text-label text-on-surface-variant">
-          {candidate.skills.length} skill{candidate.skills.length !== 1 ? 's' : ''}
+          {candidate.skills?.length || 0} skill{(candidate.skills?.length || 0) !== 1 ? 's' : ''}
         </div>
         <div className="text-label text-on-surface-variant">
-          {new Date(candidate.created_at).toLocaleDateString()}
+          {candidate.created_at ? new Date(candidate.created_at as string).toLocaleDateString() : 'N/A'}
         </div>
       </div>
     </div>

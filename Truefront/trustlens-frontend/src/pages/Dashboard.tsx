@@ -333,12 +333,14 @@ export default function Dashboard() {
                           >
                             View
                           </button>
-                          <button
-                            onClick={() => handleDelete(candidate.id)}
-                            className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
-                          >
-                            Delete
-                          </button>
+                          {candidate.id && (
+                            <button
+                              onClick={() => handleDelete(candidate.id as string)}
+                              className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

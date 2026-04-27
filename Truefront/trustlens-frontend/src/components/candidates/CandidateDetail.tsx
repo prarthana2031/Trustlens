@@ -24,7 +24,7 @@ export const CandidateDetail: React.FC<CandidateDetailProps> = ({ candidate }) =
         </div>
         <div>
           <h3 className="text-sm font-medium text-gray-700 mb-2">Created</h3>
-          <p className="text-sm text-gray-600">{formatDate(candidate.created_at)}</p>
+          <p className="text-sm text-gray-600">{candidate.created_at ? formatDate(candidate.created_at as string) : 'N/A'}</p>
         </div>
       </div>
 

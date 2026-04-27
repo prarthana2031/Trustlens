@@ -74,7 +74,7 @@ export default function ReportsPage() {
       c.job_role,
       c.status,
       c.skills.join('; '),
-      new Date(c.created_at).toLocaleDateString(),
+      c.created_at ? new Date(c.created_at as string).toLocaleDateString() : 'N/A',
     ])
     const csvContent = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
     downloadFile(csvContent, 'candidates-report.csv', 'text/csv')
@@ -265,7 +265,7 @@ export default function ReportsPage() {
                           {candidate.skills.length > 3 && ` +${candidate.skills.length - 3}`}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-500">
-                          {new Date(candidate.created_at).toLocaleDateString()}
+                          {candidate.created_at ? new Date(candidate.created_at as string).toLocaleDateString() : 'N/A'}
                         </td>
                       </tr>
                     ))}

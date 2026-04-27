@@ -37,9 +37,9 @@ export default function BiasAnalysisPage() {
     if (!candidates?.candidates.length) return
 
     const candidateData = candidates.candidates
-      .filter(c => c.status === 'completed')
+      .filter(c => c.status === 'completed' && c.id)
       .map(c => ({
-        candidate_id: c.id,
+        candidate_id: c.id as string,
         score: 0, // Will be populated from scores
         attributes: { name: c.name, job_role: c.job_role, skills: c.skills },
       }))

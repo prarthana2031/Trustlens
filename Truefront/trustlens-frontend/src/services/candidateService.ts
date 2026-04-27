@@ -237,8 +237,8 @@ export const candidateService = {
         job_role: jobRole,
         job_description: jobDescription,
         fairness_mode: 'standard',
-        resumes: candidates.map(c => ({
-          candidate_id: c.id || c.candidate_id || '',
+        resumes: candidates.filter(c => c.id || c.candidate_id).map(c => ({
+          candidate_id: (c.id || c.candidate_id) as string,
           name: c.name,
           email: c.email,
           skills: Array.isArray(c.skills) ? c.skills : [],

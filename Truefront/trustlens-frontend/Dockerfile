@@ -15,8 +15,8 @@ COPY . .
 # Fix executable permissions (prevents Error 126)
 RUN chmod -R +x node_modules/.bin
 
-# Build arguments
-ARG VITE_API_BASE_URL
+# Build arguments with default fallback
+ARG VITE_API_BASE_URL=https://resume-backend-948277799081.us-central1.run.app
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 # Build the application
