@@ -223,7 +223,8 @@ export default function BiasAnalysisPage() {
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Group</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Score Difference</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Score</th>
+                        <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Benchmark</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Disparity</th>
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-600">Severity</th>
                       </tr>
@@ -236,7 +237,10 @@ export default function BiasAnalysisPage() {
                             {indicator.score.toFixed(1)}
                           </td>
                           <td className="py-3 px-4 text-sm text-gray-600">
-                            {indicator.disparity.toFixed(2)}
+                            {indicator.benchmark.toFixed(1)}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-600">
+                            {(indicator.disparity * 100).toFixed(0)}%
                           </td>
                           <td className="py-3 px-4">
                             <span
