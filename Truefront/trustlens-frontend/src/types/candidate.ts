@@ -1,15 +1,22 @@
 export type CandidateStatus = 'pending' | 'processing' | 'completed' | 'error' | 'recommended' | 'under_review'
 
 export interface Candidate {
-  id: string
+  id?: string
+  candidate_id?: string
   name: string
   email: string
   skills: string[]
   job_role: string
   status: CandidateStatus
-  created_at: string
-  updated_at: string
+  created_at?: string
+  updated_at?: string
   resume_path?: string
+  application_id?: string
+  file_id?: string
+  filename?: string
+  size_bytes?: number
+  storage_url?: string
+  uploaded_at?: string
 }
 
 export interface CandidateListResponse {
