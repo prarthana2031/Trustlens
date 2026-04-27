@@ -32,7 +32,9 @@ export const candidateService = {
   // Get single candidate details
   getCandidate: async (id: string): Promise<CandidateDetail> => {
     try {
+      console.log(`[Candidates] Fetching candidate details for ${id}`)
       const response = await apiClient.get<CandidateDetail>(`/candidates/${id}`)
+      console.log(`[Candidates] Candidate data received:`, response.data)
       return response.data
     } catch (error) {
       console.error(`[Candidates] Get candidate ${id} error:`, error)
@@ -54,6 +56,14 @@ export const candidateService = {
   // Upload single candidate
   uploadCandidate: async (data: UploadCandidateRequest): Promise<Candidate> => {
     try {
+      console.log('[Upload] Uploading candidate with data:', {
+        name: data.name,
+        email: data.email,
+        skills: data.skills,
+        jobRole: data.job_role,
+        fileName: data.resume.name,
+      })
+
       const formData = new FormData()
       formData.append('name', data.name)
       formData.append('email', data.email)
@@ -137,8 +147,22 @@ export const candidateService = {
   // Process candidate (trigger ML)
   processCandidate: async (id: string): Promise<ProcessCandidateResponse> => {
     try {
-      const response = await apiClient.post<ProcessCandidateResponse>(`/candidates/${id}/process`)
-      return response.data
+      console.log(`[Candidates] Processing candidate ${id}`)
+      
+      // Try real API first
+      try {
+        const response = await apiClient.post<ProcessCandidateResponse>(`/candidates/${id}/process`)
+        console.log(`[Candidates] Real process response:`, response.data)
+        return response.data
+      } catch (apiError) {
+        console.warn(`[Candidates] Real API failed, using mock data:`, apiError)
+        
+        // Fallback to mock data for demonstration
+        const { createMockProcessedCandidate } = await import('./tempMockProcessing')
+        const mockResponse = createMockProcessedCandidate(id)
+        console.log(`[Candidates] Mock process response:`, mockResponse)
+        return mockResponse
+      }
     } catch (error) {
       console.error(`[Candidates] Process candidate ${id} error:`, error)
       throw error

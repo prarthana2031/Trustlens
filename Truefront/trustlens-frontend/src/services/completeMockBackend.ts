@@ -116,16 +116,43 @@ export const completeMockBackendService = {
   uploadCandidate: async (data: any): Promise<Candidate> => {
     await new Promise(resolve => setTimeout(resolve, 500))
     
+    // Calculate score based on provided skills and job role
+    const calculateScore = (skills: string[], jobRole: string) => {
+      let score = 40 // Base score
+      
+      // Add points for skills
+      if (skills && skills.length > 0) {
+        score += Math.min(skills.length * 8, 40) // Up to 40 points for skills
+        
+        // Bonus for specific high-value skills
+        const highValueSkills = ['javascript', 'react', 'typescript', 'node.js', 'python', 'java', 'aws', 'docker']
+        const bonusSkills = skills.filter(skill => 
+          highValueSkills.includes(skill.toLowerCase())
+        )
+        score += bonusSkills.length * 5 // 5 points per high-value skill
+      }
+      
+      // Add points for job role specificity
+      if (jobRole && jobRole.length > 5) {
+        score += 10 // Points for having a specific job role
+      }
+      
+      // Ensure score is within 0-100 range
+      return Math.min(Math.max(score, 0), 100)
+    }
+    
+    const calculatedScore = calculateScore(data.skills || [], data.job_role || '')
+    
     const newCandidate: Candidate = {
       candidate_id: `cand_${Date.now()}`,
       name: data.name,
       email: data.email,
       job_role: data.job_role,
       skills: data.skills,
-      original_score: Math.random() * 100,
-      enhanced_score: Math.random() * 100,
-      fairness_adjusted_score: Math.random() * 100,
-      status: 'under_review',
+      original_score: calculatedScore,
+      enhanced_score: Math.min(calculatedScore + 15, 100), // Enhancement adds up to 15 points
+      fairness_adjusted_score: calculatedScore,
+      status: 'pending',
       resume_url: `https://example.com/resume_${Date.now()}.pdf`,
       created_at: new Date().toISOString(),
     }

@@ -55,6 +55,22 @@ export default function CandidateDetailPage() {
     setEnhancedScore(score)
   }
 
+  const handleEnhanceClick = async () => {
+    try {
+      await enhanceScore.mutateAsync({
+        candidateId: id,
+        candidateData: {
+          skills: candidate.skills,
+          job_role: candidate.job_role,
+          name: candidate.name,
+          email: candidate.email
+        }
+      })
+    } catch (error) {
+      console.error('Enhancement failed:', error)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -107,23 +123,41 @@ export default function CandidateDetailPage() {
                   <p className="text-gray-600 mb-4">{candidate.email}</p>
                   <div className="flex flex-wrap gap-2 mb-4">
                     <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                      {candidate.job_role}
+                      {candidate.job_role || 'Software Developer'}
                     </span>
                     <CandidateStatusBadge status={candidate.status} />
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {candidate.skills && Array.isArray(candidate.skills) ? (
-                      candidate.skills.map((skill, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"
-                        >
-                          {skill}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-gray-400">No skills listed</span>
-                    )}
+                    {(() => {
+                      // Try to get skills from candidate data first
+                      let skillsToShow: string[] = []
+                      
+                      // Check candidate skills
+                      if (candidate.skills && Array.isArray(candidate.skills) && candidate.skills.length > 0) {
+                        skillsToShow = candidate.skills
+                      }
+                      // Fallback to score breakdown skills
+                      else if (originalScore?.breakdown?.skills && originalScore.breakdown.skills.length > 0) {
+                        skillsToShow = originalScore.breakdown.skills.map(skill => skill.skill || 'Unknown Skill')
+                      }
+                      // Fallback to enhanced score skills
+                      else if (enhancedScore?.breakdown?.skills && enhancedScore.breakdown.skills.length > 0) {
+                        skillsToShow = enhancedScore.breakdown.skills.map(skill => skill.skill || 'Unknown Skill')
+                      }
+                      
+                      return skillsToShow.length > 0 ? (
+                        skillsToShow.map((skill, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"
+                          >
+                            {skill}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-gray-400">No skills listed</span>
+                      )
+                    })()}
                   </div>
                 </div>
                 {status?.score !== undefined && (

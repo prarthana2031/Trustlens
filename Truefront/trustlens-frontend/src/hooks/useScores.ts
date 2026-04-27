@@ -18,7 +18,8 @@ export function useEnhanceScore() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (candidateId: string) => scoringService.enhanceScore(candidateId),
+    mutationFn: ({ candidateId, candidateData }: { candidateId: string; candidateData?: any }) => 
+      scoringService.enhanceScore(candidateId, candidateData),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.scores.candidate(data.candidate_id, 'enhanced') 
