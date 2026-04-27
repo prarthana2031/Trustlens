@@ -34,22 +34,39 @@ export default function BiasAnalysisPage() {
   }
 
   const handleRunAnalysis = async () => {
-    if (!candidates?.candidates.length) return
+    console.log('[BiasAnalysis] Starting analysis...')
+    console.log('[BiasAnalysis] Candidates:', candidates)
+    
+    if (!candidates?.candidates.length) {
+      console.warn('[BiasAnalysis] No candidates available')
+      return
+    }
 
-    const candidateData = candidates.candidates
-      .filter(c => c.status === 'completed' && c.id)
+    const completedCandidates = candidates.candidates.filter(c => c.status === 'completed')
+    console.log('[BiasAnalysis] Completed candidates:', completedCandidates.length)
+
+    const candidateData = completedCandidates
+      .filter(c => c.id)
       .map(c => ({
         candidate_id: c.id as string,
         score: 0, // Will be populated from scores
         attributes: { name: c.name, job_role: c.job_role, skills: c.skills },
       }))
 
+    console.log('[BiasAnalysis] Candidate data for analysis:', candidateData)
+
     if (candidateData.length === 0) {
+      console.warn('[BiasAnalysis] No candidate data to analyze')
       return
     }
 
-    const result = await biasAnalysis.mutateAsync({ candidates: candidateData })
-    setAnalysisResult(result)
+    try {
+      const result = await biasAnalysis.mutateAsync({ candidates: candidateData })
+      console.log('[BiasAnalysis] Result:', result)
+      setAnalysisResult(result)
+    } catch (error) {
+      console.error('[BiasAnalysis] Error:', error)
+    }
   }
 
   // Extract data from analysis result or use defaults

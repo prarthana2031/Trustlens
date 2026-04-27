@@ -21,8 +21,17 @@ export const biasService = {
   analyzeBias: async (data: {
     candidates: Array<{ candidate_id: string; score: number; attributes: Record<string, any> }>
   }): Promise<any> => {
-    const response = await apiClient.post('/bias/analyze', data)
-    return response.data
+    console.log('[BiasService] Analyzing bias for candidates:', data.candidates.length)
+    console.log('[BiasService] Request data:', JSON.stringify(data, null, 2))
+    
+    try {
+      const response = await apiClient.post('/bias/analyze', data)
+      console.log('[BiasService] Response:', response.data)
+      return response.data
+    } catch (error) {
+      console.error('[BiasService] Error:', error)
+      throw error
+    }
   },
 }
 

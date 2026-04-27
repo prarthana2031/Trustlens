@@ -21,11 +21,17 @@ export const candidateService = {
       // Try real API first
       try {
         const response = await apiClient.get<any>('/candidates', { params })
+        console.log('[Candidates] RAW API Response:', JSON.stringify(response.data, null, 2))
+        
         const data = response.data
         
         if (Array.isArray(data)) {
-          return { candidates: data, total: data.length, skip: 0, limit: 10 }
+          console.log('[Candidates] Array response - converting to object format')
+          const result = { candidates: data, total: data.length, skip: 0, limit: data.length }
+          console.log('[Candidates] Converted result:', result)
+          return result
         }
+        console.log('[Candidates] Object response - returning as-is')
         return data
       } catch (apiError) {
         console.debug('[Candidates] Real API not available, using mock data')
@@ -88,25 +94,34 @@ export const candidateService = {
     try {
       console.log(`[Candidates] Fetching candidate details for ${id}`)
       
-      // Always return mock data for now to ensure proper functionality
-      const mockCandidate: CandidateDetail = {
-        id: id,
-        name: 'Alice Johnson',
-        email: 'alice@example.com',
-        skills: ['JavaScript', 'React', 'TypeScript', 'Node.js', 'Python', 'AWS'],
-        job_role: 'Frontend Developer',
-        status: 'completed',
-        experience_years: 8,
-        education_level: 'Bachelor\'s in Computer Science',
-        projects_count: 12,
-        soft_skills: ['Communication', 'Leadership', 'Problem Solving', 'Teamwork'],
-        resume_path: `resumes/${id}_resume.pdf`,
-        created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      // Try real API first
+      try {
+        const response = await apiClient.get<CandidateDetail>(`/candidates/${id}`)
+        console.log(`[Candidates] Real candidate detail response:`, response.data)
+        return response.data
+      } catch (apiError) {
+        console.debug(`[Candidates] Real API not available for detail, using mock data`)
+        
+        // Fallback to mock data
+        const mockCandidate: CandidateDetail = {
+          id: id,
+          name: 'Alice Johnson',
+          email: 'alice@example.com',
+          skills: ['JavaScript', 'React', 'TypeScript', 'Node.js', 'Python', 'AWS'],
+          job_role: 'Frontend Developer',
+          status: 'completed',
+          experience_years: 8,
+          education_level: 'Bachelor\'s in Computer Science',
+          projects_count: 12,
+          soft_skills: ['Communication', 'Leadership', 'Problem Solving', 'Teamwork'],
+          resume_path: `resumes/${id}_resume.pdf`,
+          created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        }
+        
+        console.log(`[Candidates] Mock candidate response:`, mockCandidate)
+        return mockCandidate
       }
-      
-      console.log(`[Candidates] Mock candidate response:`, mockCandidate)
-      return mockCandidate
     } catch (error) {
       console.error(`[Candidates] Get candidate ${id} error:`, error)
       throw error

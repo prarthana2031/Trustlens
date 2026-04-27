@@ -19,12 +19,15 @@ export function useBiasAnalysis() {
 
   return useMutation({
     mutationFn: biasService.analyzeBias,
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('[useBiasAnalysis] Success:', data)
       queryClient.invalidateQueries({ queryKey: queryKeys.bias.all })
       toast.success('Bias analysis completed')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.detail || 'Failed to analyze bias')
+      console.error('[useBiasAnalysis] Error:', error)
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to analyze bias'
+      toast.error(`Bias analysis failed: ${errorMessage}`)
     },
   })
 }
