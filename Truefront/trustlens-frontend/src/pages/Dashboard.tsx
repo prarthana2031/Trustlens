@@ -46,6 +46,22 @@ export default function Dashboard() {
 
   const filteredCandidates = data?.candidates || []
 
+  // Debug logging to check candidate data
+  console.log('[Dashboard] Candidates data:', {
+    total: filteredCandidates.length,
+    candidates: filteredCandidates.map(c => ({
+      id: c.id,
+      name: c.name,
+      job_role: c.job_role,
+      skills: c.skills,
+      skillsCount: c.skills?.length || 0,
+      status: c.status
+    }))
+  })
+
+  // Detailed logging to see full data structure
+  console.log('[Dashboard] Full candidates data:', JSON.stringify(filteredCandidates, null, 2))
+
   // Status distribution for pie chart
   const statusCounts = filteredCandidates.reduce((acc, c) => {
     acc[c.status] = (acc[c.status] || 0) + 1

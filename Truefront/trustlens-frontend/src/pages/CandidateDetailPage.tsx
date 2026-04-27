@@ -36,6 +36,9 @@ export default function CandidateDetailPage() {
     enhancedScoreData,
     biasMetrics
   })
+
+  // Additional routing debug
+  console.log('[CandidateDetailPage] Route params:', { id, fullPath: window.location.pathname })
   const processCandidate = useProcessCandidate()
   const deleteCandidate = useDeleteCandidate()
 

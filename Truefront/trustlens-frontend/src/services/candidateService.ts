@@ -162,19 +162,32 @@ export const candidateService = {
       formData.append('job_role', data.job_role)
       formData.append('file', data.resume)
 
-      console.log('[Upload] Uploading candidate:', {
+      console.log('[Upload] Uploading candidate to backend:', {
         name: data.name,
         email: data.email,
         skills: data.skills,
         job_role: data.job_role,
         fileName: data.resume.name,
+        fileSize: data.resume.size,
+        fileType: data.resume.type
       })
 
+      // Log FormData contents for debugging
+      console.log('[Upload] FormData contents:')
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`)
+        } else {
+          console.log(`  ${key}: ${value}`)
+        }
+      }
+
       const response = await apiClient.post<Candidate>('/upload', formData)
-      console.log('[Upload] Success:', response.data)
+      console.log('[Upload] Backend Success:', response.data)
+      console.log('[Upload] Backend Response Full:', JSON.stringify(response.data, null, 2))
       return response.data
     } catch (error) {
-      console.error('[Upload] Error:', error)
+      console.error('[Upload] Backend Error:', error)
       throw error
     }
   },
@@ -182,6 +195,11 @@ export const candidateService = {
   // Batch upload candidates
   batchUploadCandidates: async (data: BatchUploadRequest): Promise<Candidate[]> => {
     try {
+      console.log('[Batch Upload] Starting batch upload with data:', {
+        count: data.candidates.length,
+        files: data.candidates.map(c => ({ name: c.resume.name, size: c.resume.size })),
+      })
+
       const formData = new FormData()
       const candidatesMetadata = data.candidates.map(c => ({
         name: c.name,
@@ -196,16 +214,16 @@ export const candidateService = {
         formData.append('files', c.resume)
       })
 
-      console.log('[Batch Upload] Uploading candidates:', {
+      console.log('[Batch Upload] Uploading candidates to backend:', {
         count: data.candidates.length,
         candidates: candidatesMetadata,
       })
 
       const response = await apiClient.post<Candidate[]>('/upload/batch', formData)
-      console.log('[Batch Upload] Success:', response.data)
+      console.log('[Batch Upload] Backend Success:', response.data)
       return response.data
     } catch (error) {
-      console.error('[Batch Upload] Error:', error)
+      console.error('[Batch Upload] Backend Error:', error)
       throw error
     }
   },

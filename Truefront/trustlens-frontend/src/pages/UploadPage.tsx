@@ -78,9 +78,10 @@ export default function UploadPage() {
         console.log('[Upload] Batch upload response:', uploadedCandidates)
         toast.success(`Batch uploaded successfully! ${uploadedCandidates.length} candidates added`)
         
-        // Navigate to candidate list (Dashboard) to show uploaded candidates
-        console.log('[Upload] Candidates uploaded successfully, redirecting to candidate list')
-        setTimeout(() => navigate('/'), 1000)
+        // Get candidate IDs and redirect to screening
+        const candidateIds = uploadedCandidates.map((c: any) => c.id || c.candidate_id).join(',')
+        console.log('[Upload] Candidates uploaded, redirecting to screening with IDs:', candidateIds)
+        setTimeout(() => navigate(`/screening?candidates=${candidateIds}`), 1000)
       } else {
         if (!resume) {
           toast.error('Please select a resume file')
@@ -113,9 +114,10 @@ export default function UploadPage() {
         console.log('[Upload] Single upload response:', uploadedCandidate)
         toast.success(`${uploadedCandidate.name} uploaded successfully!`)
         
-        // Navigate to candidate list (Dashboard) to show uploaded candidate
-        console.log('[Upload] Candidate uploaded successfully, redirecting to candidate list')
-        setTimeout(() => navigate('/'), 1000)
+        // Redirect to screening with the uploaded candidate ID
+        const candidateId = uploadedCandidate.id || uploadedCandidate.candidate_id
+        console.log('[Upload] Candidate uploaded, redirecting to screening with ID:', candidateId)
+        setTimeout(() => navigate(`/screening?candidates=${candidateId}`), 1000)
       }
       
       // Reset form
@@ -125,12 +127,6 @@ export default function UploadPage() {
       setJobRole('')
       setResume(null)
       setBatchFiles([])
-      
-      // Fallback redirect to candidate list if specific redirect didn't work
-      setTimeout(() => {
-        console.log('[Upload] Fallback redirect to candidate list')
-        navigate('/')
-      }, 2000)
     } catch (error: any) {
       let errorMsg = 'Upload failed'
       

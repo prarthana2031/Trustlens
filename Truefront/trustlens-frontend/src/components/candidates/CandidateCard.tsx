@@ -11,10 +11,27 @@ interface CandidateCardProps {
 export const CandidateCard: React.FC<CandidateCardProps> = ({ candidate }) => {
   const navigate = useNavigate()
 
+  // Debug logging to check candidate data
+  console.log('[CandidateCard] Candidate data:', {
+    id: candidate.id,
+    name: candidate.name,
+    job_role: candidate.job_role,
+    skills: candidate.skills,
+    skillsCount: candidate.skills?.length || 0,
+    email: candidate.email,
+    status: candidate.status
+  })
+
+  const handleClick = () => {
+    console.log('[CandidateCard] Clicking candidate:', candidate.id, candidate.name)
+    console.log('[CandidateCard] Navigating to:', `/candidate/${candidate.id}`)
+    navigate(`/candidate/${candidate.id}`)
+  }
+
   return (
     <div
       className="card hover:shadow-mid transition-all cursor-pointer"
-      onClick={() => navigate(`/candidate/${candidate.id}`)}
+      onClick={handleClick}
     >
       <div className="flex items-start space-x-md">
         <div className="w-12 h-12 bg-primary-fixed rounded-full flex items-center justify-center text-primary font-semibold text-label">
