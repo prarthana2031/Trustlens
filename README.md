@@ -500,8 +500,7 @@ https://preeee-276-ml-service-api.hf.space/docs
 https://resume-backend-948277799081.us-central1.run.app
 
 ## Frontend (Development)
-http://localhost:5173
-
+https://resume-frontend-948277799081.us-central1.run.app
 ---
 
 # 📄 License
@@ -512,7 +511,7 @@ See `LICENSE` for more information.
 
 ---
 
-# 🙏 Acknowledgments
+# Acknowledgments
 
 - FastAPI
 - SQLAlchemy
@@ -528,6 +527,6 @@ See `LICENSE` for more information.
 
 ---
 
-# ❤️ Built for Fairer Hiring
+# Built for Fairer Hiring
 
 TrustLens was built to promote ethical, transparent, and inclusive AI-powered recruitment systems.
