@@ -3,7 +3,7 @@ import httpx
 import logging
 import io
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 import pdfplumber
 from tenacity import RetryError
@@ -418,12 +418,27 @@ class UploadOrchestrator:
                 f"edu={components.get('education')}"
             )
 
+            skill_score = components.get("skills", 0.0)
+            experience_score = components.get("experience", 0.0)
+            education_score = components.get("education", 0.0)
+            projects_score = components.get("projects", 0.0)
+            
+            # Fix overall_score if it's 0 but sub-scores exist
+            if overall_score == 0 and (skill_score > 0 or experience_score > 0 or education_score > 0):
+                overall_score = (
+                    (skill_score * 0.35) + 
+                    (experience_score * 0.30) + 
+                    (education_score * 0.20) + 
+                    (projects_score * 0.15)
+                )
+                logger.info(f"   📊 Computed overall_score from components: {overall_score}")
+            
             score = Score(
                 candidate_id=candidate_id,
                 overall_score=overall_score,
-                skill_score=components.get("skills", 0.0),
-                experience_score=components.get("experience", 0.0),
-                education_score=components.get("education", 0.0),
+                skill_score=skill_score,
+                experience_score=experience_score,
+                education_score=education_score,
                 breakdown={
                     **components,
                     "matched_skills": score_data.get("matched_skills", []),
@@ -462,6 +477,62 @@ class UploadOrchestrator:
                 improvements=", ".join(str(s) for s in missing[:10]) if missing else None,
             )
             db.add(feedback)
+
+            # ── Step 5: Run bias analysis (store baseline metrics) ──────────
+            try:
+                logger.info(f"📊 Running bias analysis for candidate {candidate_id}")
+                from app.models.bias_metric import BiasMetric
+                from datetime import timezone
+                
+                # Prepare data for bias analysis
+                candidates_data = [{
+                    "id": candidate_id,
+                    "score": overall_score,
+                }]
+                
+                bias_result = await ml_client.analyze_bias(
+                    candidates_data=candidates_data,
+                    scores=[overall_score],
+                )
+                
+                if bias_result and isinstance(bias_result, dict):
+                    calculated_at = datetime.now(timezone.utc)
+                    
+                    # Store overall metric
+                    summary = bias_result.get("summary", {})
+                    db.add(BiasMetric(
+                        metric_name="overall_bias_analysis",
+                        group_type="overall",
+                        group_name="overall",
+                        metric_value=float(summary.get("demographic_parity_difference", 0.0)),
+                        threshold=0.1,
+                        is_biased="yes" if summary.get("is_biased", False) else "no",
+                        details=summary,
+                        calculated_at=calculated_at,
+                        candidate_id=candidate_id,
+                        is_enhanced="no",
+                    ))
+                    
+                    # Store group metrics
+                    for group in bias_result.get("groups", []):
+                        db.add(BiasMetric(
+                            metric_name="group_bias_analysis",
+                            group_type=group.get("group_type", "unknown"),
+                            group_name=group.get("group_name", "unknown"),
+                            metric_value=float(group.get("selection_rate", 0.0)),
+                            threshold=None,
+                            is_biased="yes" if summary.get("is_biased", False) else "no",
+                            details=group,
+                            calculated_at=calculated_at,
+                            candidate_id=candidate_id,
+                            is_enhanced="no",
+                        ))
+                    
+                    logger.info(f"✅ Bias analysis complete for candidate {candidate_id}")
+            except Exception as bias_err:
+                logger.warning(
+                    f"⚠️ Bias analysis failed for candidate {candidate_id} (non-fatal): {_format_error(bias_err)}"
+                )
 
             # ── Mark completed ───────────────────────────────────────────────
             candidate.status = CandidateStatus.COMPLETED

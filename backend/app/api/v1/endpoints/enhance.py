@@ -176,27 +176,45 @@ async def enhance_candidate_score(
     )
 
     # ── Return response ──────────────────────────────────────────────────────
+    score_breakdown = report.get("score_breakdown", {})
+    
+    # Format breakdown to match expected structure
+    formatted_breakdown = {
+        "skills": score_breakdown.get("skills", {}),
+        "experience": score_breakdown.get("experience", 0.0),
+        "education": score_breakdown.get("education", 0.0),
+        "projects": score_breakdown.get("projects", 0.0),
+        "soft_skills": report.get("soft_skills", []),
+    }
+    
     return {
         "success": True,
-        "candidate_id": candidate_id,
-        "name": candidate.name,
-        "job_role": job_role,
-        "original_score": score_row.overall_score,
-        "enhanced_score": enhanced_score_value,
-        "score_delta": round(enhanced_score_value - score_row.overall_score, 2),
-        "verdict": report.get("verdict", ""),
-        "matched_skills": report.get("matched_skills", []),
-        "missing_skills": report.get("missing_skills", []),
-        "additional_skills": report.get("additional_skills", []),
-        "recommendations": report.get("recommendations", []),
-        "explanation": report.get("explanation", ""),
-        "skill_match_percentage": report.get("skill_match_percentage", 0.0),
-        "experience_level": report.get("experience_level", ""),
-        "experience_years": report.get("experience_years", 0.0),
-        "education_level": report.get("education_level", ""),
-        "soft_skills": report.get("soft_skills", []),
-        "score_breakdown": report.get("score_breakdown", {}),
-        "bias_metrics": enhanced_bias_metrics,
-        "enhanced_at": score_row.enhanced_at.isoformat(),
-        "enhanced_by_model": score_row.enhanced_by_model,
+        "data": {
+            "id": score_row.id,
+            "candidate_id": candidate_id,
+            "overall_score": enhanced_score_value,
+            "skill_score": score_breakdown.get("skills", 0.0),
+            "experience_score": score_breakdown.get("experience", 0.0),
+            "education_score": score_breakdown.get("education", 0.0),
+            "breakdown": formatted_breakdown,
+            "explanation": report.get("explanation", ""),
+            "bias_correction_applied": score_row.bias_correction_applied,
+            "enhanced_at": score_row.enhanced_at.isoformat() if score_row.enhanced_at else None,
+            "enhanced_by_model": score_row.enhanced_by_model,
+            "version": "enhanced",
+            "ranking_percentile": score_row.ranking_percentile,
+            "created_at": score_row.created_at.isoformat() if score_row.created_at else None,
+            "name": candidate.name,
+            "job_role": job_role,
+            "verdict": report.get("verdict", ""),
+            "matched_skills": report.get("matched_skills", []),
+            "missing_skills": report.get("missing_skills", []),
+            "additional_skills": report.get("additional_skills", []),
+            "recommendations": report.get("recommendations", []),
+            "skill_match_percentage": report.get("skill_match_percentage", 0.0),
+            "experience_level": report.get("experience_level", ""),
+            "experience_years": report.get("experience_years", 0.0),
+            "education_level": report.get("education_level", ""),
+            "bias_metrics": enhanced_bias_metrics,
+        }
     }
