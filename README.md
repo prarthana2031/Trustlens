@@ -180,11 +180,6 @@ For issues or questions:
 2. Verify API configuration in `src/services/api.ts`
 3. Ensure all environment variables are set correctly
 4. Check backend status at the health endpoint
-
-## 📝 License
-
-[Your License Here]
-
 ---
 
 **Note**: This is a development version. For production deployment, ensure all environment variables are properly configured and Firebase authentication is set up.
