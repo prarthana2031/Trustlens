@@ -486,12 +486,13 @@ TrustLens aligns with:
 <img width="1189" height="410" alt="image" src="https://github.com/user-attachments/assets/6ea15390-fc3d-4b7b-8f76-e6ae32250f01" />
 
 ## Candidate Report
-<img width="1059" height="614" alt="image" src="https://github.com/user-attachments/assets/e06e0f14-5579-4f79-8ca5-c581b3fef0f8" />
-<img width="1053" height="300" alt="image" src="https://github.com/user-attachments/assets/c0554e49-e2ea-4e63-bcf0-71cf8758558a" />
-
+<img width="1908" height="956" alt="image" src="https://github.com/user-attachments/assets/d7959b0b-5693-48ec-8e4d-8d12900bd52c" />
 
 ## Report
-<img width="1119" height="702" alt="image" src="https://github.com/user-attachments/assets/f483ffc8-04dc-40b7-9f7d-494ac74ad278" />
+<img width="1917" height="950" alt="Screenshot 2026-05-03 210034" src="https://github.com/user-attachments/assets/cc82daa7-d580-483a-b8cf-64d4a5dd8670" />
+<img width="1889" height="843" alt="Screenshot 2026-05-03 210057" src="https://github.com/user-attachments/assets/97f6afb2-d8d5-47ea-abd2-bb9b179d6bf3" />
+
+
 
 ---
 
